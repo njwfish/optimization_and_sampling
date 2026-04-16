@@ -21,14 +21,15 @@ __pycache__/
 *.toc
 *.xdv
 
-# Compiled note/handout outputs
-/Lecture Tex/*.pdf
-/Lecture Tex/handouts/section */*.pdf
+# Ignore the stale duplicate note PDF; track the actual built note and handout PDFs
+/Lecture Tex/Lecture Notes.pdf
 
 # Private and non-repo course materials
 /AGENTS.md
+/ORGANIZATION.md
 /Corrected and Solved with util functions/
 /Lecture Notes Handwritten/
+/Lecture Tex/README.md
 /Reference PDFs/
 /Reference Sources/
 /Reference Text/
