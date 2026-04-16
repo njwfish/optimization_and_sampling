@@ -4,8 +4,6 @@ This directory contains the main course notes plus six standalone section
 handouts. The main notes and the handouts share the same preamble, notation, and
 figure styles, but the handouts are compiled separately.
 
-For the broader source-tree map, see [`../ORGANIZATION.md`](../ORGANIZATION.md).
-
 ## Main Notes
 
 From the repo root, the standard build path is:
