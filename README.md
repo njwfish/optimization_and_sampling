@@ -59,12 +59,10 @@ make notes
 ```
 
 That creates the local figure environment, regenerates Python-backed figure
-assets, and compiles the main notes.
+assets, and compiles the main notes to `Lecture Tex/Lecture Notes.pdf`.
 
 To build the standalone handouts:
 
 ```sh
 make handouts
 ```
-
-For LaTeX-specific build notes, see [`Lecture Tex/README.md`](Lecture%20Tex/README.md).

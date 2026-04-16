@@ -21,8 +21,8 @@ __pycache__/
 *.toc
 *.xdv
 
-# Ignore the stale duplicate note PDF; track the actual built note and handout PDFs
-/Lecture Tex/Lecture Notes.pdf
+# Ignore the old default latexmk output; track the actual built note and handout PDFs
+/Lecture Tex/main.pdf
 
 # Private and non-repo course materials
 /AGENTS.md

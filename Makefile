@@ -12,7 +12,7 @@ figures:
 	$(FIGURE_PYTHON) 'Lecture Tex/figures/main_notes/build_main_note_figures.py'
 
 notes:
-	$(LATEXMK) -pdf -interaction=nonstopmode -halt-on-error -cd 'Lecture Tex/main.tex'
+	$(LATEXMK) -pdf -jobname='Lecture Notes' -interaction=nonstopmode -halt-on-error -cd 'Lecture Tex/main.tex'
 
 notes-all: figures notes
 
