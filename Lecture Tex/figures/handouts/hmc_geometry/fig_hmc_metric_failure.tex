@@ -1,0 +1,83 @@
+\begin{tikzpicture}[>=Stealth,font=\footnotesize]
+  \tikzset{
+    metricPanel/.style={
+      rounded corners=5pt,
+      draw=stat221Gray!32,
+      fill=white,
+      line width=0.8pt,
+    },
+    metricTitle/.style={font=\footnotesize\bfseries,text=stat221Gray!92,align=center,text width=5.75cm},
+    metricNote/.style={font=\scriptsize,align=center,text width=5.40cm,text=stat221Gray!88},
+    shellLine/.style={draw=stat221Gray!42, line width=0.55pt},
+    smallTag/.style={
+      rounded corners=2.5pt,
+      inner sep=2.5pt,
+      font=\scriptsize,
+    },
+  }
+
+  \path[use as bounding box] (-0.15,-0.15) rectangle (13.35,4.95);
+
+  % --- Left panel: one fixed anisotropy ---
+  \begin{scope}[shift={(0,0)}]
+    \draw[metricPanel,fill=stat221GreenLight!84!white] (0,0) rectangle (6.42,4.72);
+    \node[metricTitle] at (3.21,4.26) {One fixed anisotropy};
+    \begin{scope}[shift={(3.21,2.40)}]
+      \draw[->,stat221Gray!65,line width=0.5pt] (-2.30,0) -- (2.50,0);
+      \draw[->,stat221Gray!65,line width=0.5pt] (0,-1.55) -- (0,1.75);
+      \draw[shellLine] (0,0) ellipse (1.80 and 0.54);
+      \draw[shellLine] (0,0) ellipse (1.32 and 0.40);
+      \draw[shellLine,dashed] (0,0) ellipse (1.56 and 0.47);
+      \draw[stat221Blue!82!black,line width=1.65pt,->]
+        ({1.56*cos(18)},{0.47*sin(18)})
+        arc[start angle=18,end angle=214,x radius=1.56,y radius=0.47];
+      \draw[stat221Green!72!black,line width=1.55pt,->]
+        (0.0,1.26) arc[start angle=90,end angle=450,radius=1.26];
+      \node[smallTag,fill=stat221GreenLight,text=stat221Green!55!black,anchor=south] at (0,1.12)
+        {$M^{-1}\approx \Sigma$};
+      \node[smallTag,fill=stat221BlueLight,text=stat221Blue!78!black,anchor=north] at (0,-1.00)
+        {one metric can whiten this shell};
+    \end{scope}
+    \node[metricNote] at (3.21,0.52)
+      {for fixed anisotropy, mass-matrix adaptation is a linear repair};
+  \end{scope}
+
+  % --- Right panel: curved valley ---
+  \begin{scope}[shift={(6.88,0)}]
+    \draw[metricPanel,fill=stat221OrangeLight!72!white] (0,0) rectangle (6.42,4.72);
+    \node[metricTitle] at (3.21,4.26) {Curved valley};
+    \begin{scope}[shift={(3.18,2.28)}]
+      \draw[shellLine]
+        (-2.05,-1.08)
+        .. controls (-2.28,-0.10) and (-1.85,0.78) .. (-0.78,1.16)
+        .. controls (0.44,1.58) and (1.55,1.26) .. (1.92,0.28)
+        .. controls (2.14,-0.38) and (1.76,-1.06) .. (0.84,-1.30)
+        .. controls (-0.18,-1.55) and (-1.44,-1.48) .. (-2.05,-1.08) -- cycle;
+      \draw[shellLine]
+        (-1.52,-0.84)
+        .. controls (-1.66,-0.08) and (-1.30,0.54) .. (-0.44,0.84)
+        .. controls (0.38,1.12) and (1.14,0.92) .. (1.38,0.22)
+        .. controls (1.54,-0.28) and (1.20,-0.72) .. (0.48,-0.92)
+        .. controls (-0.34,-1.14) and (-1.14,-1.06) .. (-1.52,-0.84) -- cycle;
+
+      \draw[stat221Gray!55,dashed,line width=0.95pt] (-1.10,0.72) -- (1.42,-0.08);
+
+      \begin{scope}[shift={(-1.10,0.72)},rotate=73]
+        \draw[stat221Red!82!black,line width=1.10pt] (0,0) ellipse (0.62 and 0.18);
+      \end{scope}
+      \begin{scope}[shift={(1.42,-0.08)},rotate=8]
+        \draw[stat221Blue!82!black,line width=1.10pt] (0,0) ellipse (0.64 and 0.19);
+      \end{scope}
+
+      \fill[stat221Red!82!black] (-1.10,0.72) circle (1.2pt);
+      \fill[stat221Blue!82!black] (1.42,-0.08) circle (1.2pt);
+
+      \node[smallTag,fill=white,text=stat221Red!82!black,anchor=east] at (-1.32,1.18) {patch A};
+      \node[smallTag,fill=white,text=stat221Blue!82!black,anchor=west] at (1.62,-0.86) {patch B};
+      \node[smallTag,fill=stat221GrayLight,text=stat221Gray!92] at (0.22,0.24)
+        {one $M$ cannot whiten both};
+    \end{scope}
+    \node[metricNote] at (3.21,0.52)
+      {when the principal directions rotate across the typical set, one Euclidean metric is only locally right};
+  \end{scope}
+\end{tikzpicture}

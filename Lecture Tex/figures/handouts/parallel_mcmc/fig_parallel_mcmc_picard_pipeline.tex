@@ -1,0 +1,56 @@
+\begin{tikzpicture}[>=Stealth,font=\small]
+  \tikzset{
+    stage/.style={
+      rectangle,
+      rounded corners=2.2pt,
+      line width=0.9pt,
+      minimum height=1.25cm,
+      align=center,
+      inner sep=6pt,
+    },
+    state/.style={
+      stage,
+      draw=stat221Gray!60,
+      fill=stat221GrayLight,
+      text width=0.18\linewidth,
+    },
+    local/.style={
+      stage,
+      draw=stat221Purple!60!black,
+      fill=stat221Purple!10,
+      text width=0.28\linewidth,
+    },
+    scan/.style={
+      stage,
+      draw=stat221Teal!60!black,
+      fill=stat221TealLight,
+      text width=0.28\linewidth,
+    },
+    arrow/.style={->,stat221Gray!70,line width=0.9pt},
+  }
+
+  \node[state] (cur) {%
+    \textbf{Current guess}\\[-0.1em]
+    $x^{(k)}_{1:T}$
+  };
+
+  \node[local, right=3mm of cur] (localblk) {%
+    \textbf{Local increments}\\[-0.1em]
+    (parallel over $t$)\\[-0.2em]
+    Compute $d_t^{(k)} = g_t(x^{(k)}_{t-1})$.
+  };
+
+  \node[scan, right=3mm of localblk] (scanblk) {%
+    \textbf{Scan prefix sum}\\[-0.1em]
+    Prefix-sum the increments $d_t^{(k)}$ to update all $x_t^{(k+1)}$.
+  };
+
+  \node[state, right=3mm of scanblk] (upd) {%
+    \textbf{Updated guess}\\[-0.1em]
+    $x^{(k+1)}_{1:T}$
+  };
+
+  \draw[arrow] (cur) -- (localblk);
+  \draw[arrow] (localblk) -- (scanblk);
+  \draw[arrow] (scanblk) -- (upd);
+\end{tikzpicture}

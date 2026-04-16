@@ -1,0 +1,62 @@
+# macOS and Python clutter
+.DS_Store
+__pycache__/
+*.py[cod]
+.ipynb_checkpoints/
+.venv-figures/
+
+# Generated LaTeX products
+*.aux
+*.bbl
+*.bcf
+*.blg
+*.fdb_latexmk
+*.fls
+*.lof
+*.log
+*.lot
+*.out
+*.run.xml
+*.synctex.gz
+*.toc
+*.xdv
+
+# Compiled note/handout outputs
+/Lecture Tex/*.pdf
+/Lecture Tex/handouts/section */*.pdf
+
+# Private and non-repo course materials
+/AGENTS.md
+/Corrected and Solved with util functions/
+/Lecture Notes Handwritten/
+/Reference PDFs/
+/Reference Sources/
+/Reference Text/
+/Student Scribe Notes/
+/PROBLEM_SET_ALIGNMENT_AUDIT.md
+/SOLUTIONS.md
+/STUDENT_NOTES_TRACKER.md
+/handwritten_coverage_audit.md
+/Syllabus (2).pdf
+/page01_test.png
+/references.bib
+/stat221_hmc_geometry_preview.aux
+/stat221_hmc_geometry_preview.fdb_latexmk
+/stat221_hmc_geometry_preview.fls
+/stat221_hmc_geometry_preview.log
+/stat221_hmc_geometry_preview.out
+/stat221_hmc_geometry_preview.pdf
+/stat221_hmc_preview3-1.png
+/stat221_hmc_preview3-2.png
+/stat221_hmc_preview3-3.png
+
+# Keep only the note-related helper scripts in the repo
+/scripts/*
+!/scripts/build_handouts.py
+!/scripts/requirements-figures.txt
+
+# Internal citation bookkeeping for handout drafting
+/Lecture Tex/handouts/section */citation_ledger.md
+/Lecture Tex/handouts/section */references/
+/Lecture Tex/handouts/section 3/c*
+/Lecture Tex/handouts/section 3/ç

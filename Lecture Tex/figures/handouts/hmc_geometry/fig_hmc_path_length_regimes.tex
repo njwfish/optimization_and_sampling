@@ -1,0 +1,160 @@
+\begin{tikzpicture}[>=Stealth,font=\footnotesize]
+  \tikzset{
+    hmcPanel/.style={
+      rounded corners=5pt,
+      draw=stat221Gray!30,
+      fill=white,
+      line width=0.8pt,
+    },
+    hmcBadge/.style={
+      rounded corners=3pt,
+      minimum width=2.3cm,
+      inner xsep=7pt,
+      inner ysep=3pt,
+      font=\small\bfseries,
+      text=white,
+    },
+    hmcNote/.style={
+      align=center,
+      text width=2.9cm,
+      font=\scriptsize,
+      text=stat221Gray!88,
+    },
+    hmcShellFill/.style={
+      fill=stat221BlueLight!82,
+      draw=none,
+      even odd rule,
+    },
+    hmcShellLine/.style={draw=stat221Gray!45, line width=0.55pt},
+  }
+
+  \path[use as bounding box] (-0.45,0.00) rectangle (13.40,6.95);
+
+  % --- Top row: three shell sketches ---
+  \begin{scope}[shift={(0.08,3.46)}]
+    \draw[hmcPanel,fill=stat221GrayLight!86] (0,0) rectangle (4.03,3.28);
+    \node[hmcBadge,fill=stat221Gray!80] at (2.015,2.82) {Too Short};
+    \node[font=\scriptsize\color{stat221Gray}] at (2.015,2.50) {$\tau \ll \pi$};
+    \begin{scope}[shift={(2.015,1.53)}]
+      \path[hmcShellFill] (0,0) ellipse (1.52 and 0.88) (0,0) ellipse (1.02 and 0.56);
+      \draw[hmcShellLine] (0,0) ellipse (1.52 and 0.88);
+      \draw[hmcShellLine] (0,0) ellipse (1.02 and 0.56);
+      \draw[hmcShellLine,dashed] (0,0) ellipse (1.28 and 0.73);
+      \coordinate (shortstart) at ({1.28*cos(24)},{0.73*sin(24)});
+      \fill[stat221Blue] (shortstart) circle (1.8pt);
+      \draw[stat221Blue!82!black,line width=1.75pt,->]
+        (shortstart)
+        arc[start angle=24,end angle=78,x radius=1.28,y radius=0.73];
+      \node[font=\scriptsize,text=stat221Blue!82!black,anchor=west] at ($(shortstart)+(0.08,0.10)$) {start};
+    \end{scope}
+    \node[hmcNote] at (2.015,0.38) {refresh before crossing};
+  \end{scope}
+
+  \begin{scope}[shift={(4.68,3.46)}]
+    \draw[hmcPanel,fill=stat221GreenLight!84!white] (0,0) rectangle (4.03,3.28);
+    \node[hmcBadge,fill=stat221Green!72!black] at (2.015,2.82) {Cross-Shell};
+    \node[font=\scriptsize\color{stat221Gray}] at (2.015,2.50) {$\tau \approx \pi$};
+    \begin{scope}[shift={(2.015,1.53)}]
+      \path[hmcShellFill] (0,0) ellipse (1.52 and 0.88) (0,0) ellipse (1.02 and 0.56);
+      \draw[hmcShellLine] (0,0) ellipse (1.52 and 0.88);
+      \draw[hmcShellLine] (0,0) ellipse (1.02 and 0.56);
+      \draw[hmcShellLine,dashed] (0,0) ellipse (1.28 and 0.73);
+      \coordinate (goodstart) at ({1.28*cos(24)},{0.73*sin(24)});
+      \fill[stat221Blue] (goodstart) circle (1.8pt);
+      \draw[stat221Green!72!black,line width=1.95pt,->]
+        (goodstart)
+        arc[start angle=24,end angle=208,x radius=1.28,y radius=0.73];
+    \end{scope}
+    \node[hmcNote] at (2.015,0.38) {cross most of the shell};
+  \end{scope}
+
+  \begin{scope}[shift={(9.28,3.46)}]
+    \draw[hmcPanel,fill=stat221OrangeLight!75] (0,0) rectangle (4.03,3.28);
+    \node[hmcBadge,fill=stat221Red!82!black] at (2.015,2.82) {Retracing};
+    \node[font=\scriptsize\color{stat221Gray}] at (2.015,2.50) {$\tau > \pi$};
+    \begin{scope}[shift={(2.015,1.53)}]
+      \path[hmcShellFill] (0,0) ellipse (1.52 and 0.88) (0,0) ellipse (1.02 and 0.56);
+      \draw[hmcShellLine] (0,0) ellipse (1.52 and 0.88);
+      \draw[hmcShellLine] (0,0) ellipse (1.02 and 0.56);
+      \draw[hmcShellLine,dashed] (0,0) ellipse (1.28 and 0.73);
+      \coordinate (longstart) at ({1.28*cos(24)},{0.73*sin(24)});
+      \fill[stat221Blue] (longstart) circle (1.8pt);
+      \draw[stat221Blue!82!black,line width=1.60pt]
+        (longstart)
+        arc[start angle=24,end angle=300,x radius=1.28,y radius=0.73];
+      \draw[stat221Red!82!black,line width=1.95pt,->]
+        ({1.28*cos(300)},{0.73*sin(300)})
+        arc[start angle=300,end angle=388,x radius=1.28,y radius=0.73];
+    \end{scope}
+    \node[hmcNote] at (2.015,0.38) {retrace old states};
+  \end{scope}
+
+  % --- Bottom title + travel-distance curve ---
+  \node[font=\small\bfseries,text=stat221Gray!92,anchor=north west] at (0.86,2.98)
+    {Expected normalized travel on one Gaussian shell};
+  \node[font=\scriptsize,text=stat221Gray!88,anchor=north west] at (0.86,2.66)
+    {$\E[\|X_{\tau}-X_0\|_2^2]/(2d)=1-\cos\tau$};
+  \draw[stat221Gray!25,line width=0.5pt] (0.86,2.40) -- (12.78,2.40);
+
+  \begin{axis}[
+    at={(1.02,0.88)},
+    anchor=south west,
+    scale only axis=true,
+    width=10.95cm,
+    height=1.78cm,
+    xmin=0, xmax=6.28319,
+    ymin=0, ymax=2.08,
+    axis lines=left,
+    axis line style={stat221Gray!60, line width=0.7pt},
+    xtick={0,1.0472,3.14159,5.75959,6.28319},
+    xticklabels={$0$,$\pi/6$,$\pi$,$11\pi/6$,$2\pi$},
+    ytick={0,1,2},
+    yticklabels={$0$,$1$,$2$},
+    ylabel={travel},
+    tick style={stat221Gray!60},
+    every axis label/.style={font=\scriptsize},
+    every tick label/.style={font=\scriptsize},
+    clip=false,
+  ]
+    \addplot[draw=none,fill=stat221BlueLight!32,domain=0:6.28319,samples=200] {1-cos(deg(x))} \closedcycle;
+    \addplot[stat221Blue!82!black, very thick, domain=0:6.28319, samples=200] {1-cos(deg(x))};
+
+    \addplot[only marks, mark=*, mark size=2.2pt, stat221Blue!85!black]
+      coordinates {(1.0472,{1-cos(deg(1.0472))})};
+    \addplot[only marks, mark=*, mark size=2.4pt, stat221Green!72!black]
+      coordinates {(3.14159,2)};
+    \addplot[only marks, mark=*, mark size=2.2pt, stat221Red!82!black]
+      coordinates {(5.75959,{1-cos(deg(5.75959))})};
+
+    \draw[stat221Gray!45,dashed] (axis cs:1.0472,0) -- (axis cs:1.0472,{1-cos(deg(1.0472))});
+    \draw[stat221Gray!45,dashed] (axis cs:3.14159,0) -- (axis cs:3.14159,2);
+    \draw[stat221Gray!45,dashed] (axis cs:5.75959,0) -- (axis cs:5.75959,{1-cos(deg(5.75959))});
+
+    \node[
+      rounded corners=2pt,
+      fill=stat221GrayLight,
+      inner sep=2.5pt,
+      font=\scriptsize,
+      text=stat221Gray!90,
+      anchor=south west
+    ] at (axis cs:0.22,0.28) {refresh too early};
+
+    \node[
+      rounded corners=2pt,
+      fill=stat221GreenLight,
+      inner sep=2.5pt,
+      font=\scriptsize,
+      text=stat221Green!55!black,
+      anchor=south
+    ] at (axis cs:3.14159,2.02) {maximal cross-shell travel};
+
+    \node[
+      rounded corners=2pt,
+      fill=stat221OrangeLight,
+      inner sep=2.5pt,
+      font=\scriptsize,
+      text=stat221Red!82!black,
+      anchor=north east
+    ] at (axis cs:6.10,0.62) {distance falls as the orbit closes};
+  \end{axis}
+\end{tikzpicture}

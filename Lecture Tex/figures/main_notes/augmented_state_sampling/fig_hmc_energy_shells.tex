@@ -1,0 +1,38 @@
+\begin{tikzpicture}[>=Stealth]
+  \path[use as bounding box] (-3.1,-2.55) rectangle (10.9,3.2);
+
+  \begin{scope}[shift={(0,0)}]
+    \node[font=\footnotesize] at (0,3.05) {energy shells};
+    \draw[->,stat221Gray!70,line width=0.45pt] (-2.7,0) -- (2.95,0);
+    \draw[->,stat221Gray!70,line width=0.45pt] (0,-2.7) -- (0,2.95);
+    \node[stat221Gray!70,font=\footnotesize,anchor=west] at (2.95,-0.12) {$x$};
+    \node[stat221Gray!70,font=\footnotesize,anchor=south] at (-0.10,2.95) {$p$};
+    \path[fill=stat221Blue!16, even odd rule] (0,0) circle (2.10) (0,0) circle (1.40);
+    \draw[stat221Gray!45,line width=0.5pt] (0,0) circle (0.75);
+    \draw[stat221Red!80!black,line width=0.75pt] (0,0) circle (1.40);
+    \draw[stat221Gray!45,line width=0.5pt] (0,0) circle (2.10);
+    \node[stat221Blue!70!black,font=\footnotesize,anchor=west] at (1.28,1.62) {$H^{-1}(E)$};
+    \node[stat221Gray,font=\footnotesize,align=center] at (0,-2.05) {microcanonical\\distribution};
+  \end{scope}
+
+  \begin{scope}[shift={(7.2,0)}]
+    \node[font=\footnotesize] at (0,3.05) {refresh and flow};
+    \draw[->,stat221Gray!70,line width=0.45pt] (-2.7,0) -- (2.95,0);
+    \draw[->,stat221Gray!70,line width=0.45pt] (0,-2.7) -- (0,2.95);
+    \node[stat221Gray!70,font=\footnotesize,anchor=west] at (2.95,-0.12) {$x$};
+    \node[stat221Gray!70,font=\footnotesize,anchor=south] at (-0.10,2.95) {$p$};
+    \draw[stat221Gray!45,line width=0.5pt] (0,0) circle (0.75);
+    \draw[stat221Red!80!black,line width=0.75pt] (0,0) circle (1.40);
+    \draw[stat221Gray!45,line width=0.5pt] (0,0) circle (2.10);
+    \draw[->,stat221Orange!85!black,line width=1.0pt] (-0.55,0.55) -- (-1.12,1.12);
+    \node[stat221Orange!85!black,font=\footnotesize,anchor=east] at (-1.18,1.20) {refresh $p$};
+    \draw[stat221Purple!80!black,line width=1.05pt]
+      (-1.30,0.52)
+      arc[start angle=158,end angle=18,radius=1.40];
+    \draw[stat221Purple!80!black,line width=1.05pt,->]
+      (1.33,0.43)
+      arc[start angle=18,end angle=-110,radius=1.40];
+    \node[stat221Purple!80!black,font=\footnotesize,anchor=west] at (0.72,1.92) {flow $\phi_t$};
+    \fill[stat221Purple!80!black] (-1.30,0.52) circle (1.1pt);
+  \end{scope}
+\end{tikzpicture}

@@ -1,0 +1,66 @@
+\begin{tikzpicture}[>=Stealth,font=\footnotesize]
+  \tikzset{
+    elbopanel/.style={
+      draw=stat221Gray!30,
+      fill=white,
+      rounded corners=5pt,
+      line width=0.6pt
+    },
+    elbotitle/.style={font=\small\bfseries, text=stat221Gray!90},
+    decoderbox/.style={
+      draw=stat221Gray!70!black,
+      fill=white,
+      rounded corners=3pt,
+      minimum width=2.75cm,
+      minimum height=1.0cm,
+      align=center,
+      line width=0.8pt
+    },
+    elbobadge/.style={
+      rounded corners=2pt,
+      inner sep=2.8pt,
+      font=\footnotesize,
+      align=center,
+      text=stat221Gray!85
+    }
+  }
+  \path[use as bounding box] (-0.15,-0.20) rectangle (13.35,5.10);
+
+  \node[elbopanel,minimum width=6.25cm,minimum height=4.65cm,anchor=north west] (leftpanel) at (0.0,4.75) {};
+  \node[elbopanel,minimum width=6.25cm,minimum height=4.65cm,anchor=north west] (rightpanel) at (6.90,4.75) {};
+
+  \node[elbotitle,anchor=north west] at ([xshift=0.30cm,yshift=-0.28cm]leftpanel.north west) {Useful latent geometry};
+  \node[elbotitle,anchor=north west] at ([xshift=0.30cm,yshift=-0.28cm]rightpanel.north west) {Posterior collapse};
+
+  \begin{scope}[shift={(2.35,2.25)}]
+    \draw[stat221Gray!60,dashed,line width=0.85pt] (0,0) circle (1.45);
+    \fill[stat221Blue!18] (-0.72,0.60) ellipse (0.46 and 0.27);
+    \fill[stat221Green!18] (0.68,0.35) ellipse (0.46 and 0.27);
+    \fill[stat221Purple!18] (-0.02,-0.72) ellipse (0.46 and 0.27);
+    \draw[stat221Blue!78!black,line width=0.9pt] (-0.72,0.60) ellipse (0.46 and 0.27);
+    \draw[stat221Green!68!black,line width=0.9pt] (0.68,0.35) ellipse (0.46 and 0.27);
+    \draw[stat221Purple!72!black,line width=0.9pt] (-0.02,-0.72) ellipse (0.46 and 0.27);
+    \node[elbobadge,fill=stat221BlueLight,anchor=south,text=stat221Blue!75!black] at (0,0.62) {different $x$ separate\\into different posteriors};
+    \node[elbobadge,fill=stat221Gray!8,anchor=north west] at (-1.05,-1.66) {same prior support};
+  \end{scope}
+  \node[decoderbox] (decl) at (5.18,2.25) {decoder\\$p_\theta(x\mid z)$};
+  \draw[->,stat221Gray!75,line width=0.9pt] (3.62,2.80) -- (4.16,2.45);
+  \draw[->,stat221Gray!75,line width=0.9pt] (3.66,2.50) -- (4.16,2.35);
+  \draw[->,stat221Gray!75,line width=0.9pt] (3.36,1.60) -- (4.16,2.07);
+  \node[elbobadge,fill=stat221GreenLight,anchor=north east,text=stat221Green!60!black] at (4.78,0.45) {$I_q(X;Z)>0$};
+
+  \begin{scope}[shift={(9.30,2.25)}]
+    \draw[stat221Gray!60,dashed,line width=0.85pt] (0,0) circle (1.45);
+    \fill[stat221Blue!22] (-0.07,0.07) ellipse (0.56 and 0.30);
+    \fill[stat221Green!22] (0.05,-0.03) ellipse (0.56 and 0.30);
+    \fill[stat221Purple!22] (0.00,0.01) ellipse (0.56 and 0.30);
+    \draw[stat221Blue!78!black,line width=0.9pt] (-0.07,0.07) ellipse (0.56 and 0.30);
+    \draw[stat221Green!68!black,line width=0.9pt] (0.05,-0.03) ellipse (0.56 and 0.30);
+    \draw[stat221Purple!72!black,line width=0.9pt] (0.00,0.01) ellipse (0.56 and 0.30);
+    \node[elbobadge,draw=stat221Red!28,fill=stat221OrangeLight,anchor=south,text=stat221Red!75!black] at (0,0.72) {$q_\phi(z\mid x)\approx p(z)$};
+    \node[elbobadge,fill=stat221Gray!8,anchor=north west] at (-1.00,-1.66) {same prior support};
+  \end{scope}
+  \node[decoderbox] (decr) at (12.10,2.25) {expressive decoder\\already fits $x$};
+  \draw[->,stat221Gray!75,line width=0.9pt] (10.78,2.25) -- (11.04,2.25);
+  \node[elbobadge,fill=stat221OrangeLight,anchor=north east,text=stat221Red!75!black] at (11.70,0.45) {$I_q(X;Z)\approx 0$};
+\end{tikzpicture}

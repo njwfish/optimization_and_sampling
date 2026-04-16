@@ -1,0 +1,55 @@
+\begin{tikzpicture}[x=0.70cm,y=0.70cm,>=Stealth]
+  % Level sets for f(x,y)=x^2/9 + y^2.
+  \foreach \c/\col in {4/35,2/30,1/25,0.5/20,0.25/15} {
+    \pgfmathsetmacro{\a}{3*sqrt(\c)}
+    \pgfmathsetmacro{\b}{sqrt(\c)}
+    \draw[stat221Gray!\col,line width=0.35pt] (0,0) ellipse ({\a} and {\b});
+  }
+
+  % Axes.
+  \draw[->,stat221Gray!70,line width=0.45pt] (-6.4,0) -- (6.6,0);
+  \draw[->,stat221Gray!70,line width=0.45pt] (0,-2.4) -- (0,2.6);
+  \node[stat221Gray!70,font=\small,anchor=west] at (6.6,-0.10) {shallow};
+  \node[stat221Gray!70,font=\small,anchor=south] at (-0.10,2.6) {steep};
+
+  % Small step size (many small moves).
+  \draw[stat221Red,thick,densely dotted,line join=round]
+    (6.0000,2.0000) -- (5.8667,1.6000) -- (5.7363,1.2800) -- (5.6088,1.0240) -- (5.4842,0.8192)
+    -- (5.3623,0.6554) -- (5.2431,0.5243) -- (5.1266,0.4194) -- (5.0127,0.3355) -- (4.9013,0.2684)
+    -- (4.7924,0.2147) -- (4.6859,0.1718) -- (4.5818,0.1374) -- (4.4800,0.1100) -- (4.3804,0.0880)
+    -- (4.2831,0.0704);
+  \foreach \p in {(6.0000,2.0000),(5.8667,1.6000),(5.7363,1.2800),(5.6088,1.0240),(5.4842,0.8192),
+    (5.3623,0.6554),(5.2431,0.5243),(5.1266,0.4194),(5.0127,0.3355),(4.9013,0.2684),
+    (4.7924,0.2147),(4.6859,0.1718),(4.5818,0.1374),(4.4800,0.1100),(4.3804,0.0880),(4.2831,0.0704)}{
+    \fill[stat221Red] \p circle (1.35pt);
+  }
+
+  % Large step size (faster but oscillatory in the steep direction).
+  \draw[stat221Blue,thick,line join=round]
+    (6.0000,2.0000) -- (4.9333,-1.2000) -- (4.0563,0.7200) -- (3.3352,-0.4320) -- (2.7423,0.2592)
+    -- (2.2547,-0.1555) -- (1.8539,0.0933) -- (1.5243,-0.0560) -- (1.2533,0.0336) -- (1.0305,-0.0202)
+    -- (0.8473,0.0121);
+  \foreach \p in {(6.0000,2.0000),(4.9333,-1.2000),(4.0563,0.7200),(3.3352,-0.4320),(2.7423,0.2592),
+    (2.2547,-0.1555),(1.8539,0.0933),(1.5243,-0.0560),(1.2533,0.0336),(1.0305,-0.0202),(0.8473,0.0121)}{
+    \fill[stat221Blue] \p circle (1.35pt);
+  }
+
+  % Compact legend.
+  \matrix[
+    anchor=north west,
+    draw=stat221Gray!25,
+    fill=white,
+    fill opacity=0.95,
+    text opacity=1,
+    rounded corners,
+    inner sep=2.5pt,
+    column sep=0.22cm,
+    row sep=0.10cm,
+    font=\small,
+  ] at (-6.35,2.45) {
+    \node{\tikz[baseline=-0.6ex]{\draw[stat221Red,thick,densely dotted] (0,0) -- (0.8,0); \fill[stat221Red] (0.4,0) circle (1.1pt);}}; &
+      \node[stat221Red,anchor=west]{small step size}; \\
+    \node{\tikz[baseline=-0.6ex]{\draw[stat221Blue,thick] (0,0) -- (0.8,0); \fill[stat221Blue] (0.4,0) circle (1.1pt);}}; &
+      \node[stat221Blue,anchor=west]{large step size}; \\
+  };
+\end{tikzpicture}

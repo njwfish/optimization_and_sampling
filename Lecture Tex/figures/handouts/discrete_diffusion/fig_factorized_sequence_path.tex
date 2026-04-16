@@ -1,0 +1,96 @@
+\begin{tikzpicture}[>=Stealth,font=\small]
+  \tikzset{
+    panel/.style={
+      rounded corners=6pt,
+      draw=stat221Gray!35,
+      fill=stat221GrayLight,
+      line width=0.8pt,
+    },
+    ribbon/.style={
+      rounded corners=6pt,
+      draw=stat221Blue!55!black,
+      fill=stat221BlueLight,
+      line width=0.8pt,
+    },
+    paneltitle/.style={
+      font=\small\bfseries,
+      text=stat221Gray,
+      align=center,
+      text width=5.4cm,
+    },
+    token/.style={
+      draw=stat221Gray!70!black,
+      fill=white,
+      rounded corners=3pt,
+      line width=0.85pt,
+      minimum width=1.02cm,
+      minimum height=0.74cm,
+      inner sep=1pt,
+    },
+    noisytoken/.style={
+      token,
+      draw=stat221Blue!75!black,
+      fill=stat221BlueLight,
+    },
+    postbox/.style={
+      draw=stat221Green!70!black,
+      fill=stat221GreenLight,
+      rounded corners=3pt,
+      line width=0.85pt,
+      minimum width=1.18cm,
+      minimum height=0.84cm,
+      inner sep=1pt,
+    },
+    keeparrow/.style={
+      ->,
+      stat221Blue!75!black,
+      line width=1.0pt,
+      line cap=round,
+    },
+    redrawarrow/.style={
+      ->,
+      stat221Gray!70,
+      dashed,
+      line width=1.0pt,
+      line cap=round,
+    },
+  }
+
+  \path[use as bounding box] (-0.15,-1.35) rectangle (14.05,5.05);
+
+  \draw[panel] (0.0,0.0) rectangle ++(6.75,4.65);
+  \draw[panel] (7.00,0.0) rectangle ++(6.75,4.65);
+  \node[paneltitle] at (3.38,4.15) {1. Independent noising};
+  \node[paneltitle] at (10.38,4.15) {2. Coordinatewise posteriors};
+
+  % Left panel
+  \node[font=\small\bfseries,text=stat221Gray] at (3.38,3.45) {clean sequence \(x_0\)};
+  \foreach \x/\tok in {1.20/{\(A\)},2.55/{\(B\)},3.90/{\(C\)},5.25/{\(D\)}} {
+    \node[token] at (\x,2.80) {\tok};
+  }
+  \node[font=\small\bfseries,text=stat221Gray] at (3.38,1.85) {noisy sequence \(x_t\)};
+  \node[noisytoken] at (1.20,1.20) {\(A\)};
+  \node[noisytoken] at (2.55,1.20) {\(\xi_2\)};
+  \node[noisytoken] at (3.90,1.20) {\(C\)};
+  \node[noisytoken] at (5.25,1.20) {\(\xi_4\)};
+  \draw[keeparrow] (1.20,2.40) -- (1.20,1.58);
+  \draw[redrawarrow] (2.55,2.40) -- (2.55,1.58);
+  \draw[keeparrow] (3.90,2.40) -- (3.90,1.58);
+  \draw[redrawarrow] (5.25,2.40) -- (5.25,1.58);
+  % Right panel
+  \node[font=\small\bfseries,text=stat221Gray] at (10.38,3.45) {input noisy sequence \(x_t\)};
+  \foreach \x/\tok in {8.15/{\(A\)},9.60/{\(\xi_2\)},11.05/{\(C\)},12.50/{\(\xi_4\)}} {
+    \node[noisytoken] at (\x,2.80) {\tok};
+  }
+  \foreach \x/\lab in {8.15/{\(\mu_{t,1}\)},9.60/{\(\mu_{t,2}\)},11.05/{\(\mu_{t,3}\)},12.50/{\(\mu_{t,4}\)}} {
+    \draw[->,stat221Green!70!black,line width=1.0pt] (\x,2.40) -- (\x,1.68);
+    \node[postbox] at (\x,1.10) {\lab};
+  }
+  \draw[ribbon] (0.40,-1.05) rectangle (13.75,-0.18);
+  \node[text=stat221Gray,align=center] at (7.08,-0.61) {%
+    \(\displaystyle
+      K_{t\mid 0}(x\mid x_0)
+      =
+      \prod_{j=1}^d
+      \bigl[\alpha_t\,\delta_{x_{0,j}}(x_j)+(1-\alpha_t)\,r_j(x_j)\bigr]\)};
+\end{tikzpicture}

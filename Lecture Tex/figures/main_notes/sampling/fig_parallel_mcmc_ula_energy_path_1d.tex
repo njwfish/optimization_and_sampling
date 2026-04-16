@@ -1,0 +1,90 @@
+\begin{tikzpicture}
+  \pgfplotsset{table/search path={figures/main_notes/sampling/,../../figures/main_notes/sampling/,Lecture Tex/figures/main_notes/sampling/}}
+	  \begin{axis}[
+	    name=energy,
+	    width=0.47\linewidth,
+	    height=5.8cm,
+	    xmin=-3, xmax=3,
+	    ymin=0, ymax=13,
+	    axis lines=left,
+	    xlabel={$x$},
+	    ylabel={$U(x)$},
+	    tick style={stat221Gray},
+	    tick label style={font=\small},
+	    label style={font=\small},
+      legend style={
+        font=\scriptsize,
+        at={(axis description cs:0.5,0.98)},
+        anchor=north,
+        fill=white,
+        fill opacity=0.90,
+        draw=none,
+      },
+      legend columns=4,
+	  ]
+    \addplot[stat221Gray,very thick] table [x=x, y=U] {data_parallel_mcmc_ula_1d_energy_curve.dat};
+    \addlegendentry{$U(x)$}
+
+    \addplot[
+      only marks,
+      mark=*,
+      mark size=1.35,
+      mark options={draw=white, line width=0.25pt, fill=stat221Blue},
+      opacity=0.65,
+    ]
+    table [x=x, y=U]
+    {data_parallel_mcmc_ula_1d_energy_path.dat};
+    \addlegendentry{trajectory}
+
+    \addplot[
+      only marks,
+      mark=*,
+      mark size=2.1,
+      mark options={draw=white, line width=0.45pt, fill=stat221Purple},
+    ]
+    table [x=x, y=U]
+    {data_parallel_mcmc_ula_1d_energy_start.dat};
+    \addlegendentry{start}
+
+    \addplot[
+      only marks,
+      mark=*,
+      mark size=1.9,
+      mark options={draw=white, line width=0.45pt, fill=stat221Teal},
+    ]
+    table [x=x, y=U]
+    {data_parallel_mcmc_ula_1d_energy_end.dat};
+    \addlegendentry{end}
+  \end{axis}
+
+	  \begin{axis}[
+	    at={(energy.east)},
+	    anchor=west,
+	    xshift=0.06\linewidth,
+	    width=0.47\linewidth,
+	    height=5.8cm,
+	    xmin=0, xmax=80,
+	    axis lines=left,
+	    xlabel={time index $t$},
+	    ylabel={$x_t$},
+	    tick style={stat221Gray},
+	    tick label style={font=\small},
+	    label style={font=\small},
+	  ]
+    \addplot[stat221Blue,thick,line cap=round] coordinates {(0,0.7) (1,0.6611309774)};
+    \addplot[stat221Blue,thick,line cap=round] table [x=t, y=seq] {data_parallel_mcmc_ula_timeseries.dat};
+
+    \addplot[
+      only marks,
+      mark=*,
+      mark size=2.1,
+      mark options={draw=white, line width=0.45pt, fill=stat221Purple},
+    ] coordinates {(0,0.7)};
+    \addplot[
+      only marks,
+      mark=*,
+      mark size=1.9,
+      mark options={draw=white, line width=0.45pt, fill=stat221Teal},
+    ] coordinates {(80,1.32430078)};
+  \end{axis}
+\end{tikzpicture}

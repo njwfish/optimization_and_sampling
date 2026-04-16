@@ -1,0 +1,49 @@
+\begin{tikzpicture}
+  \begin{axis}[
+    width=0.62\linewidth,
+    height=6.0cm,
+    axis lines=middle,
+    xmin=-1.6, xmax=1.6,
+    ymin=-1.6, ymax=1.6,
+    xlabel={$\theta_1$},
+    ylabel={$\theta_2$},
+    xtick=\empty,
+    ytick=\empty,
+    clip=false,
+  ]
+    \addplot[stat221Blue,thick,domain=0:360,samples=200] ({cos(x)}, {sin(x)});
+
+    \addplot[only marks,mark=*,mark size=1.2pt,stat221Red] coordinates {(1,0)};
+    \node[
+      font=\small,
+      anchor=south west,
+      fill=white,
+      fill opacity=0.92,
+      text opacity=1,
+      inner sep=1pt,
+      rounded corners=1pt,
+    ] at (axis cs:1.050000,0.080000) {$\theta^\star$};
+
+    \addplot[only marks,mark=*,mark size=1.2pt,stat221Purple] coordinates {(0,1)};
+    \node[
+      font=\small,
+      anchor=south east,
+      fill=white,
+      fill opacity=0.92,
+      text opacity=1,
+      inner sep=1pt,
+      rounded corners=1pt,
+    ] at (axis cs:-0.040000,1.070000) {$\tilde\theta$};
+
+    \node[
+      font=\small,
+      align=center,
+      stat221Gray,
+      fill=white,
+      fill opacity=0.92,
+      text opacity=1,
+      inner sep=1.5pt,
+      rounded corners=1pt,
+    ] at (axis cs:0,-1.420000) {same observed law\\(same $\|\theta\|_2$)};
+  \end{axis}
+\end{tikzpicture}

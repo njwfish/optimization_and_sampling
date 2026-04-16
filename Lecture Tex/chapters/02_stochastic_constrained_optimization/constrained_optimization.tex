@@ -1,0 +1,587 @@
+\subsection{Constrained optimization and reparameterization}
+\label{subsec:constrained-optimization}
+
+Many statistical models impose constraints on parameters:
+probability vectors live on a simplex, variances must be positive, and covariance matrices must be positive semidefinite.
+Abstractly, we consider the constrained optimization problem
+\begin{equation}
+  \min_{x\in C} f(x),
+  \label{eq:constrained-min}
+\end{equation}
+where $C\subseteq \R^d$ is a constraint set.
+Unlike in \eqref{eq:unconstrained-min}, a naive gradient step $x-t\nabla f(x)$ may leave $C$.
+Projected methods address this by combining unconstrained updates with a projection back onto the feasible set.
+This gives the geometric view of constrained optimization.
+We then turn to the algebraic view, where Lagrange multipliers and dual variables encode how the active constraints push back on the objective.
+
+\subsubsection{Projections and projected gradient descent}
+\label{subsubsec:projection}
+\label{subsubsec:projected-gd}
+
+\begin{definition}[Euclidean projection]
+Let $C\subseteq \R^d$ be nonempty, closed, and convex.
+The (Euclidean) projection onto $C$ is the map $\Pi_C:\R^d\to C$ defined by
+\[
+  \Pi_C(z) \coloneqq \argmin_{y\in C}\,\norm{y-z}_2.
+\]
+\end{definition}
+
+Closedness ensures the minimum is attained; convexity plus the strict convexity of $\norm{\cdot}_2^2$ ensures the minimizer is unique.
+Equivalently, $\Pi_C(z)$ is the closest feasible point to $z$ in Euclidean distance.
+
+\begin{algorithm}
+  \caption{Projected gradient descent}
+  \label{alg:projected-gd}
+  \begin{algorithmic}[1]
+    \Require Differentiable $f$, closed convex set $C$, initial point $x_0\in C$, step sizes $(t_k)_{k\ge 0}$
+    \Ensure Iterate $x_k \in C$
+    \For{$k=0,1,2,\dots$ until converged}
+      \State $x_{k+1} \gets \Pi_C\bigl(x_k - t_k \nabla f(x_k)\bigr)$
+    \EndFor
+    \State \Return $x_k$
+\end{algorithmic}
+\end{algorithm}
+
+Projected gradient descent is conceptually simple: take an unconstrained step, then project back to the feasible set.
+In practice, the main difficulty is often computational: computing $\Pi_C$ can be easy for some sets (like boxes) and nontrivial for others.
+When projections are expensive, other approaches can be more appropriate.
+For example, one can add penalties for constraint violations, use barrier terms (which blow up near the boundary) to keep iterates strictly feasible (see \cref{subsubsec:log-barrier}), or introduce Lagrange multipliers and work with optimality conditions (see \cref{subsubsec:kkt}).
+Here we focus on projections because they make the feasibility mechanism explicit.
+
+\begin{figure}[t]
+  \centering
+  \input{figures/main_notes/optimization/fig_projected_gd_geometry}
+  \caption{Geometry of a projected gradient step.
+  Starting from a feasible iterate $x_k\in C$, we first take an unconstrained step to $y=x_k-t_k\nabla f(x_k)$.
+  If $y\notin C$, projected gradient descent maps it back to the feasible set via $x_{k+1}=\Pi_C(y)$, the closest point in $C$ to $y$ in Euclidean distance.
+  At the projection point (for smooth boundaries) the correction direction $y-x_{k+1}$ is orthogonal to the boundary.}
+  \label{fig:projected-gd-geometry}
+\end{figure}
+
+\subsubsection{Affine constraints}
+\label{subsubsec:affine-equality-constraints}
+
+A common and especially simple constraint set is an affine set
+\[
+  C \coloneqq \{x\in\R^d:Ax=b\},
+\]
+where $A\in\R^{p\times d}$ has full row rank.
+In this case the Euclidean projection admits a closed form.
+
+\begin{lemma}[Projection onto an affine set]
+\label{lem:proj-affine}
+Assume $A$ has full row rank and let $C=\{x\in\R^d:Ax=b\}$.
+Then for any $z\in\R^d$,
+\[
+  \Pi_C(z)=z-A^\top(AA^\top)^{-1}(Az-b).
+\]
+\end{lemma}
+\begin{proof}
+The projection solves $\min_x \frac12\norm{x-z}_2^2$ subject to $Ax=b$.
+Form the Lagrangian $\mathcal{L}(x,\nu)=\frac12\norm{x-z}_2^2+\nu^\top(Ax-b)$.
+Stationarity gives $0=\nabla_x\mathcal{L} = x-z + A^\top \nu$, so $x=z-A^\top\nu$.
+Enforcing feasibility yields $Az-AA^\top\nu=b$, hence $\nu=(AA^\top)^{-1}(Az-b)$ since $A$ has full row rank.
+\end{proof}
+
+Applying \cref{alg:projected-gd} with this projection keeps all iterates feasible.
+Equivalently, the projected gradient step moves in the nullspace $\mathcal{N}(A)$:
+\[
+  x_{k+1} = x_k - t_k\,\Delta x_k,
+  \qquad
+  \Delta x_k = \operatorname{Proj}_{\mathcal{N}(A)}\bigl(\nabla f(x_k)\bigr),
+\]
+so feasibility is preserved for any step size $t_k$.
+Here $\mathcal{N}(A)=\{v\in\R^d:Av=0\}$ is the nullspace of $A$, and $\operatorname{Proj}_{\mathcal{N}(A)}$ denotes the Euclidean (orthogonal) projection onto this subspace.
+See \citet[\S10.2, Ex.~10.2]{boyd_vandenberghe_2004_convex}.
+When $A$ has full row rank, one can write $\operatorname{Proj}_{\mathcal{N}(A)} = I - A^\top(AA^\top)^{-1}A$.
+
+\subsubsection{Simplex and positive-semidefinite projections}
+\label{subsubsec:projection-examples}
+
+Each of the projections below is itself a convex optimization problem.
+Often, writing a Lagrangian and working out the optimality conditions reveals a simple thresholding structure (an ``active set'' of tight inequalities).
+We formalize this viewpoint later via the KKT conditions in \cref{subsubsec:kkt}; here we use it as a computational tool.
+
+A first example is the probability simplex in $\R^d$,
+\[
+  \Delta \coloneqq \{x\in\R^d:\ x_i\ge 0,\ \textstyle\sum_{i=1}^d x_i = 1\}.
+\]
+The naive operation ``threshold then renormalize'' is \emph{not} the Euclidean projection in general.
+The true projection has a clean structure.
+
+\begin{proposition}[Projection onto the simplex has a threshold form]
+\label{prop:simplex-threshold}
+Let $z\in\R^d$.
+There exists a scalar $\tau\in\R$ such that the Euclidean projection $x^\star=\Pi_\Delta(z)$ satisfies
+\begin{equation}
+  x^\star_i = \max\{z_i-\tau,0\},
+  \qquad i=1,\dots,d,
+  \label{eq:simplex-proj-threshold}
+\end{equation}
+with $\tau$ chosen so that $\sum_i x^\star_i = 1$.
+\end{proposition}
+\begin{proof}
+Consider the convex problem $\min_{x\in\Delta} \frac12\norm{x-z}_2^2$.
+Form the Lagrangian with multiplier $\tau$ for the equality constraint and multipliers $\nu_i\ge 0$ for the inequalities:
+\[
+  \mathcal{L}(x,\tau,\nu)
+  = \frac12\norm{x-z}_2^2 + \tau\Bigl(\sum_{i=1}^d x_i - 1\Bigr) - \sum_{i=1}^d \nu_i x_i.
+\]
+Stationarity gives $0 = \nabla_x \mathcal{L} = x-z + \tau \1 - \nu$, i.e.\ $x_i = z_i-\tau+\nu_i$.
+Complementary slackness $\nu_i x_i = 0$ implies:
+if $x_i>0$ then $\nu_i=0$ and $x_i=z_i-\tau$; if $x_i=0$ then $\nu_i=\tau-z_i\ge 0$ so $z_i-\tau\le 0$.
+Thus $x_i=\max\{z_i-\tau,0\}$.
+Finally, feasibility requires $\sum_i x_i=1$, which determines $\tau$.
+\end{proof}
+
+\begin{algorithm}
+  \caption{Projection onto the simplex $\Delta$ (sorting + threshold)}
+  \label{alg:simplex-proj}
+  \begin{algorithmic}[1]
+    \Require Vector $z\in\R^d$
+    \Ensure Projection $x=\Pi_\Delta(z)$
+    \State Let $u$ be $z$ sorted in descending order: $u_1\ge \cdots \ge u_d$
+    \State $\rho \gets \max\Bigl\{j\in\{1,\dots,d\}:\ u_j - \frac{1}{j}\Bigl(\sum_{i=1}^j u_i - 1\Bigr) > 0\Bigr\}$
+    \State $\tau \gets \frac{1}{\rho}\Bigl(\sum_{i=1}^{\rho} u_i - 1\Bigr)$
+    \State $x_i \gets \max\{z_i-\tau,0\}$ for $i=1,\dots,d$
+    \State \Return $x$
+  \end{algorithmic}
+\end{algorithm}
+
+\Cref{alg:simplex-proj} implements the threshold form in \cref{prop:simplex-threshold} by finding the active set size $\rho$ and corresponding threshold $\tau$ via sorting.
+Complementary slackness identifies an ``active set'' of coordinates that remain positive, and sorting is a convenient way to find its size.
+Because $\Delta$ contains interior points (for example $(1/d)\1$), Slater's condition holds for this convex problem, so the KKT conditions in \cref{subsubsec:kkt} indeed characterize the projection.
+
+Another common constraint set is the cone of symmetric positive semidefinite (PSD) matrices $\mathbb{S}^d_+ \subseteq \R^{d\times d}$.
+The Euclidean projection (for the Frobenius norm) of a symmetric matrix $Z$ onto $\mathbb{S}^d_+$ is obtained by thresholding eigenvalues.
+Here the Frobenius norm is $\norm{M}_F = \left(\sum_{i,j} M_{ij}^2\right)^{1/2}$.
+If $Z$ is not symmetric, one typically replaces it by its symmetric part $(Z+Z^\top)/2$ before projecting.
+
+\begin{proposition}[Projection onto the PSD cone]
+\label{prop:psd-proj}
+Let $Z\in\R^{d\times d}$ be symmetric with eigendecomposition $Z=Q\Lambda Q^\top$, where $\Lambda=\mathrm{diag}(\lambda_1,\dots,\lambda_d)$.
+Define $\Lambda_+=\mathrm{diag}(\max\{\lambda_1,0\},\dots,\max\{\lambda_d,0\})$.
+Then
+\[
+  \Pi_{\mathbb{S}^d_+}(Z) = Q\Lambda_+ Q^\top.
+\]
+\end{proposition}
+\begin{proof}
+We minimize $\norm{X-Z}_F^2$ over $X\succeq 0$.
+By orthogonal invariance of the Frobenius norm,
+\[
+  \norm{X-Z}_F^2 = \norm{Q^\top X Q - \Lambda}_F^2.
+\]
+Since $X\succeq 0$ iff $Q^\top X Q \succeq 0$, we can equivalently minimize over $Y\succeq 0$ the quantity $\norm{Y-\Lambda}_F^2$.
+For diagonal $\Lambda$, the optimal $Y$ is diagonal as well (off-diagonal entries only increase the Frobenius norm), reducing the problem to projecting $(\lambda_1,\dots,\lambda_d)$ onto $\R_+^d$, i.e.\ replacing negative coordinates by $0$.
+\end{proof}
+
+This is the same basic thresholding phenomenon as in \cref{prop:simplex-threshold}, but expressed in an eigenbasis rather than in coordinates.
+In the eigen-directions where the PSD constraint is inactive, the projection keeps the eigenvalue unchanged; in the active directions, the eigenvalue is clipped to $0$.
+
+\subsubsection{Reparameterization for strict constraints}
+\label{subsubsec:strict-constraints}
+
+The projection $\Pi_C$ is only guaranteed to be well-defined when $C$ is closed.
+Strict constraints (e.g.\ $x_i>0$ or $\Sigma\succ 0$) define open sets, which can cause projection-based methods to misbehave near the boundary.
+In such cases, a minimizer can fail to exist: the infimum may be approached only at boundary points that are not feasible.
+\begin{example}[Open constraints can destroy projections]
+If $C=(0,1)\subset\R$ and $z=0$, then $\inf_{x\in C}\norm{x-z}_2=0$ but the infimum is not attained in $C$.
+\end{example}
+A common alternative is to \emph{reparameterize} the constrained object in terms of unconstrained variables.
+
+A common example is enforcing that a covariance matrix $\Sigma$ is symmetric positive definite.
+If $\Sigma\succ 0$ is symmetric, it has a Cholesky factorization $\Sigma=LL^\top$ with $L$ lower triangular and $L_{ii}>0$.
+We can enforce strict positivity by writing $L_{ii}=\exp(b_{ii})$ for unconstrained $b_{ii}\in\R$.
+Then any choice of parameters produces $\Sigma\succ 0$ automatically.
+
+Similarly, the strict simplex
+\[
+\Delta^\circ \coloneqq \{x\in\R^d:\ x_i>0,\ \textstyle\sum_{i=1}^d x_i = 1\}
+\]
+can be reparameterized by the softmax map: for $y\in\R^d$, define
+\[
+x_i = \frac{e^{y_i}}{\sum_{j=1}^d e^{y_j}},
+\qquad i=1,\dots,d.
+\]
+This enforces $x\in\Delta^\circ$ automatically and turns optimization over $\Delta^\circ$ into unconstrained optimization in $y$ (up to the invariance $y\mapsto y+c\mathbf{1}$).
+The next example shows the same idea in a matrix-valued statistical model, where reparameterization removes a fragile positivity constraint and isolates the remaining structural restriction.
+\label{subsubsec:gaussian-precision-example}
+
+\begin{example}[Gaussian precision estimation with a sparsity constraint]
+Let $x_1,\dots,x_n \in \R^d$ be i.i.d.\ with $x_i\sim \mathcal{N}(\mu,\Sigma)$, where $\Sigma\succ 0$.
+Up to an additive constant, the negative log-likelihood is
+\begin{equation}
+  \mathcal{L}(\mu,\Sigma)
+  = \frac{n}{2}\log\det\Sigma + \frac12\sum_{i=1}^n (x_i-\mu)^\top \Sigma^{-1}(x_i-\mu).
+  \label{eq:gauss-nll}
+\end{equation}
+Suppose we impose the (structural) constraint that the $(1,2)$ and $(2,1)$ entries of the precision matrix $\Omega\coloneqq\Sigma^{-1}$ are zero:
+\[
+  \Omega_{12}=\Omega_{21}=0.
+\]
+(In Gaussian models, such sparsity constraints correspond to conditional independences.)
+
+Optimizing over $\mu$ first gives $\hat\mu=\bar x$, where $\bar x=\frac1n\sum_{i=1}^n x_i$.
+Rewriting the objective in terms of $\Omega=\Sigma^{-1}$ then yields
+\begin{equation}
+  \mathcal{L}(\bar x,\Omega)
+  = \frac{n}{2}\Bigl(-\log\det\Omega + \operatorname{tr}(\Omega S)\Bigr),
+  \qquad
+  S \coloneqq \frac1n\sum_{i=1}^n (x_i-\bar x)(x_i-\bar x)^\top.
+  \label{eq:gauss-nll-omega}
+\end{equation}
+The matrix $S$ is the sample covariance.
+The objective \eqref{eq:gauss-nll-omega} is convex over $\Omega\succ 0$ (since $-\log\det$ is convex and the trace term is linear); see \citet[\S3.1.5]{boyd_vandenberghe_2004_convex}.
+Adding the linear constraint $\Omega_{12}=0$ preserves convexity.
+
+To enforce $\Omega\succ 0$, write $\Omega = LL^\top$ with $L$ lower triangular and $L_{ii}=\exp(b_{ii})$.
+This is exactly the structure-preserving parameterization from \Cref{subsubsec:cholesky-geometry}, and the corresponding log-determinant and quadratic identities are developed in \Cref{subsubsec:solves-logdets}.
+Here the point is that the strict positivity constraint is absorbed into the factor, while the sparsity constraint becomes simpler.
+Indeed, because $L$ is lower triangular,
+\[
+  \Omega_{21} = (LL^\top)_{21} = L_{21}L_{11} = 0 \quad \Rightarrow \quad L_{21}=0,
+\]
+because $L_{11}=\exp(b_{11})>0$.
+So the constrained precision estimation problem reduces to an optimization over the factor entries, with one simple linear constraint in place of the original positivity-plus-sparsity constraints:
+\begin{equation}
+  \min_{L}\;
+  -n\sum_{i=1}^d b_{ii} + \frac{n}{2}\operatorname{tr}(L^\top S L)
+  \quad\text{s.t.}\quad
+  L \text{ lower triangular},\; L_{ii}=\exp(b_{ii}),\; L_{21}=0.
+  \label{eq:gauss-precision-cholesky}
+\end{equation}
+Concretely, the free variables are the real numbers $b_{11},\dots,b_{dd}$ and the strictly lower-triangular entries of $L$ (with $L_{21}$ fixed to $0$), and every such choice produces a valid precision matrix $\Omega\succ 0$.
+This is the main lesson of the example.
+Reparameterization removes the fragile positivity constraint, and the remaining structural constraint can be handled either by eliminating the variable or through the KKT framework developed next.
+\end{example}
+
+\subsubsection{KKT conditions and equality-constrained Newton}
+\label{subsubsec:kkt}
+\label{subsubsec:newton-equality-constraints}
+
+The projection examples above already showed the basic multiplier idea.
+If we want to minimize \(f(x)\) subject to one equality constraint \(h(x)=0\), we form the Lagrangian
+\[
+  \mathcal{L}(x,\nu)=f(x)+\nu h(x).
+\]
+At a constrained optimum, the gradient of \(f\) need not vanish.
+Instead it is balanced by the gradient of the constraint:
+\[
+  \nabla f(x^\star)+\nu^\star \nabla h(x^\star)=0.
+\]
+The multiplier records how strongly the constraint pushes back against further decrease of the objective.
+The KKT conditions are the general version of this first-order balance.
+
+Consider a problem with inequality and equality constraints,
+\begin{equation}
+  \min_{x\in\R^d} f(x)
+  \quad\text{s.t.}\quad
+  g_i(x)\le 0,\ i=1,\dots,m,
+  \qquad
+  h_j(x)=0,\ j=1,\dots,p,
+  \label{eq:ineq-eq-constrained}
+\end{equation}
+where $f,g_i,h_j$ are differentiable.
+The constrained problem \eqref{eq:ineq-eq-constrained} is called the \emph{primal problem}, and \(x\) is the \emph{primal variable}.
+For multipliers $\lambda\in\R_+^m$ (i.e.\ $\lambda_i\ge 0$) and $\nu\in\R^p$, define the Lagrangian
+\[
+  \mathcal{L}(x,\lambda,\nu)
+  \coloneqq f(x) + \sum_{i=1}^m \lambda_i g_i(x) + \sum_{j=1}^p \nu_j h_j(x).
+\]
+For fixed multipliers, \(\mathcal{L}(x,\lambda,\nu)\) is just an unconstrained objective in \(x\): the extra terms encode how much we penalize or reward constraint violation.
+The same construction also defines the \emph{dual function}
+\[
+  q(\lambda,\nu)\coloneqq \inf_{x\in\R^d}\,\mathcal{L}(x,\lambda,\nu),
+\]
+and the associated \emph{dual problem}
+\[
+  \max_{\lambda\in\R_+^m,\ \nu\in\R^p}\; q(\lambda,\nu).
+\]
+The dual function is the best lower bound on the primal objective that the multipliers can certify, and the dual problem searches for the strongest such bound.
+For each fixed $(\lambda,\nu)$, the dual function is obtained by minimizing the Lagrangian over the primal variable \(x\).
+This automatically makes $q$ a concave function of $(\lambda,\nu)$, even if the primal problem itself is not convex.
+Let $p^\star$ denote the optimal value of \eqref{eq:ineq-eq-constrained}, and let $d^\star$ denote the optimal value of the dual.
+Weak duality gives $d^\star\le p^\star$.
+Indeed, if $x$ is primal feasible and $\lambda\ge 0$, then
+\[
+  \mathcal{L}(x,\lambda,\nu)
+  = f(x) + \sum_{i=1}^m \lambda_i g_i(x) + \sum_{j=1}^p \nu_j h_j(x)
+  \le f(x),
+\]
+because the inequality-constraint terms are nonpositive and the equality-constraint terms vanish.
+Taking the infimum over $x$ gives $q(\lambda,\nu)\le f(x)$.
+More generally, for any primal feasible $x$ and dual feasible $(\lambda,\nu)$ (meaning $\lambda\ge 0$ and $q(\lambda,\nu)>-\infty$) we have $q(\lambda,\nu)\le f(x)$, so the nonnegative quantity $f(x)-q(\lambda,\nu)$ is a computable \emph{duality gap} certificate; see \citet[\S5.1.2--\S5.1.3]{boyd_vandenberghe_2004_convex}.
+
+\begin{example}[Dual problem for affine projection]
+\label{ex:affine-projection-dual}
+Consider the affine projection problem from \cref{lem:proj-affine},
+\[
+  \min_{x\in\R^d} \frac12\norm{x-z}_2^2
+  \qquad\text{s.t.}\qquad
+  Ax=b,
+\]
+where $A$ has full row rank.
+Its Lagrangian is $\mathcal{L}(x,\nu)=\frac12\norm{x-z}_2^2+\nu^\top(Ax-b)$.
+Minimizing over $x$ gives $x=z-A^\top\nu$, and substituting this back yields the dual function
+\[
+  q(\nu)=\nu^\top(Az-b)-\frac12\nu^\top AA^\top \nu.
+\]
+The dual problem is therefore the unconstrained concave quadratic
+\[
+  \max_{\nu\in\R^p}\;
+  \nu^\top(Az-b)-\frac12\nu^\top AA^\top \nu.
+\]
+Its maximizer is $\nu^\star=(AA^\top)^{-1}(Az-b)$, and substituting back into $x=z-A^\top\nu$ recovers the projection formula from \cref{lem:proj-affine}.
+This example makes the roles clear: the primal variable is the candidate point $x$, while the dual variable $\nu$ enforces the feasibility condition $Ax=b$.
+\end{example}
+
+The Karush--Kuhn--Tucker (KKT) conditions are the standard first-order optimality conditions associated with \eqref{eq:ineq-eq-constrained}.
+For convex problems they can give an exact, checkable characterization of optimality; for nonconvex problems they should be viewed as necessary conditions (under mild regularity of the constraints), not as a guarantee of global optimality.
+We say that $(x^\star,\lambda^\star,\nu^\star)$ satisfies the KKT conditions if
+\begin{equation}
+  \begin{aligned}
+    g_i(x^\star) &\le 0, && i=1,\dots,m, \\
+    h_j(x^\star) &= 0, && j=1,\dots,p, \\
+    \lambda_i^\star &\ge 0, && i=1,\dots,m, \\
+    \lambda_i^\star g_i(x^\star) &= 0, && i=1,\dots,m, \\
+    \nabla f(x^\star) + \sum_{i=1}^m \lambda_i^\star \nabla g_i(x^\star) + \sum_{j=1}^p \nu_j^\star \nabla h_j(x^\star) &= 0.
+  \end{aligned}
+  \label{eq:kkt-conditions}
+\end{equation}
+
+The last line in \eqref{eq:kkt-conditions} is called \emph{stationarity}: at optimality, the objective gradient is balanced by a linear combination of constraint gradients.
+Complementary slackness, $\lambda_i^\star g_i(x^\star)=0$, captures the ``active set'' idea:
+if constraint $g_i(x)\le 0$ is \emph{inactive} at $x^\star$ (meaning $g_i(x^\star)<0$), then necessarily $\lambda_i^\star=0$, so it plays no role in stationarity.
+Only constraints that are tight ($g_i(x^\star)=0$) can have nonzero multipliers; we call such constraints \emph{active}.
+These multipliers appear in the stationarity equation as a linear combination of the gradients of the active constraints.
+For a differentiable constraint $g_i$, the vector $\nabla g_i(x^\star)$ is orthogonal to the boundary $\{x:\ g_i(x)=0\}$ at $x^\star$, so it acts as a (local) normal vector to the constraint surface.
+For an inequality constraint $g_i(x)\le 0$, $\nabla g_i(x^\star)$ points locally in the direction where $g_i$ increases, i.e.\ toward constraint violation.
+
+This matches the basic geometry of constrained minima.
+If $x^\star$ lies in the interior of the feasible region, then all inequalities are inactive, complementary slackness forces $\lambda^\star=0$, and stationarity reduces to $\nabla f(x^\star)=0$.
+If $x^\star$ lies on the boundary, then stationarity says that $-\nabla f(x^\star)$ can be written as a linear combination of constraint gradients, with nonnegative coefficients on the active inequalities.
+In other words, any direction that decreases $f$ must point (at least a little) out of the feasible set, and the multipliers encode how the active constraints ``push back'' against the objective gradient.
+In the unconstrained case ($m=p=0$), \eqref{eq:kkt-conditions} reduces to $\nabla f(x^\star)=0$.
+See \cref{fig:kkt-geometry} for a two-dimensional picture of this balance.
+
+\begin{figure}[H]
+  \centering
+  \input{figures/main_notes/optimization/fig_kkt_geometry}
+  \caption{Geometry of KKT stationarity and complementary slackness.
+  Left: with a single active inequality at a smooth boundary point $x^\star$, stationarity forces $-\nabla f(x^\star)$ to align with the constraint normal $\nabla g(x^\star)$, with some scale $\lambda^\star\ge 0$.
+  Right: at a corner with two active inequalities, stationarity forces $-\nabla f(x^\star)$ to lie in the set of nonnegative combinations of the active normals $\nabla g_1(x^\star)$ and $\nabla g_2(x^\star)$.
+  This same ``normal direction'' geometry underlies Euclidean projection steps, such as the projected update in \cref{fig:projected-gd-geometry}.}
+  \label{fig:kkt-geometry}
+\end{figure}
+
+This same KKT geometry also explains the geometry of Euclidean projection.
+The projection $\Pi_C(z)$ is defined as the minimizer of $\min_{x\in C} \frac12\norm{x-z}_2^2$, which is a convex problem when $C$ is convex.
+When $C$ is described by differentiable constraints, applying the KKT stationarity equation to this projection problem shows that $z-\Pi_C(z)$ must be a linear combination of gradients of the active constraints at the projection point.
+For example, if $C=\{x:\ g(x)\le 0\}$ with differentiable $g$ and $x^\star=\Pi_C(z)$ lies on the boundary $g(x^\star)=0$, then there exists $\lambda^\star\ge 0$ such that
+\[
+  x^\star - z + \lambda^\star \nabla g(x^\star)=0,
+  \qquad\text{so}\qquad
+  z-x^\star = \lambda^\star \nabla g(x^\star).
+\]
+This is exactly the normal-direction geometry illustrated in \cref{fig:projected-gd-geometry}: for a smooth boundary, the projection correction is orthogonal to the tangent.
+
+\begin{theorem}[KKT optimality conditions for convex problems]
+\label{thm:kkt-convex}
+Consider the constrained problem \eqref{eq:ineq-eq-constrained}.
+Assume that $f$ and $g_i$ are convex, that each equality constraint $h_j$ is affine (linear plus a constant), and that there exists a \emph{strictly feasible} point $\tilde x$ with $g_i(\tilde x)<0$ for all $i$ and $h_j(\tilde x)=0$ for all $j$ (Slater's condition).
+Then $x^\star$ solves \eqref{eq:ineq-eq-constrained} if and only if there exist multipliers $\lambda^\star\in\R_+^m$ and $\nu^\star\in\R^p$ such that $(x^\star,\lambda^\star,\nu^\star)$ satisfies the KKT conditions \eqref{eq:kkt-conditions}.
+See \citet[\S5.5.3]{boyd_vandenberghe_2004_convex}.
+\end{theorem}
+
+Under Slater's condition, strong duality holds ($p^\star=d^\star$) and the KKT multipliers can be viewed as a dual certificate of optimality (zero duality gap); see \citet[\S5.5.3]{boyd_vandenberghe_2004_convex}.
+This is the basic \emph{primal--dual} viewpoint:
+one seeks a primal variable $x$ and dual multipliers $(\lambda,\nu)$ that simultaneously satisfy primal feasibility, dual feasibility, complementary slackness, and stationarity.
+The KKT system is precisely the set of equations and inequalities that couples these two sides of the problem.
+
+The KKT conditions are not only a certificate of optimality; they can also be viewed as a system of equations to solve.
+A particularly transparent case is the equality constrained problem
+\begin{equation}
+  \min_{x\in\R^d} f(x)
+  \quad\text{s.t.}\quad
+  Ax=b,
+  \label{eq:equality-constrained}
+\end{equation}
+where $A\in\R^{p\times d}$ has full row rank $p<d$ and $f$ is twice differentiable.
+Projected gradient descent can enforce feasibility via the closed-form projection in \cref{lem:proj-affine}.
+
+Newton's method applies the same feasibility idea to the local quadratic model of $f$.
+Assume $x$ is feasible ($Ax=b$) and let $H=\Hess f(x)$.
+The equality constrained Newton step $\Delta x_{\mathrm{nt}}$ is the minimizer of the quadratic model subject to preserving feasibility to first order, i.e.\ staying in the tangent space:
+\[
+  \Delta x_{\mathrm{nt}}
+  \in \argmin_{\Delta x}\; \nabla f(x)^\top \Delta x + \frac12 \Delta x^\top H \Delta x
+  \quad\text{s.t.}\quad
+  A\Delta x = 0.
+\]
+Introducing a Lagrange multiplier $\nu\in\R^p$ for the constraint $A\Delta x=0$, the KKT conditions (see \cref{subsubsec:kkt}) yield the linear system
+\begin{equation}
+  \begin{bmatrix}
+    H & A^\top \\
+    A & 0
+  \end{bmatrix}
+  \begin{bmatrix}
+    \Delta x_{\mathrm{nt}} \\
+    \nu
+  \end{bmatrix}
+  =
+  \begin{bmatrix}
+    -\nabla f(x) \\
+    0
+  \end{bmatrix}.
+  \label{eq:equality-newton-kkt}
+\end{equation}
+The top block row is the stationarity condition for the quadratic model (with the equality constraint incorporated via $A^\top\nu$), while the bottom block row enforces feasibility $A\Delta x_{\mathrm{nt}}=0$.
+The block matrix in \eqref{eq:equality-newton-kkt} is called the (equality-constrained) KKT matrix.
+If $A$ has full row rank and $H$ is positive definite on $\mathcal{N}(A)$ (i.e.\ $\Delta x\ne 0$ and $A\Delta x=0$ implies $\Delta x^\top H \Delta x>0$), then this matrix is nonsingular and \eqref{eq:equality-newton-kkt} has a unique solution; see \citet[\S10.2]{boyd_vandenberghe_2004_convex}.
+One typically combines $\Delta x_{\mathrm{nt}}$ with a backtracking line search on $f$ (feasibility is preserved since $A\Delta x_{\mathrm{nt}}=0$).
+
+\subsubsection{Barrier methods}
+\label{subsubsec:log-barrier}
+
+For inequality constraints, another common approach is to keep the iterates strictly inside the feasible region by adding a term that blows up at the boundary.
+One exact but nonsmooth way to express this is to rewrite each inequality $g_i(x)\le 0$ with the indicator of the negative half-line,
+\[
+  I_{(-\infty,0]}(u)
+  \coloneqq
+  \begin{cases}
+    0, & u\le 0,\\
+    +\infty, & u>0.
+  \end{cases}
+\]
+Then the constrained problem can be written equivalently as minimizing
+\[
+  f(x) + \sum_{i=1}^m I_{(-\infty,0]}\bigl(g_i(x)\bigr)
+  \qquad \text{subject to} \qquad Ax=b.
+\]
+This makes the role of the inequalities completely explicit, but it is not suitable for Newton-like updates because the indicator is flat on the interior and singular at the boundary.
+The log barrier replaces this hard wall by the smooth surrogate $-(1/t)\log(-u)$, which is finite on the interior and diverges as $u\uparrow 0$.
+Multiplying the resulting surrogate objective by $t$ leads to the standard barrier form $t f(x)+\phi(x)$.
+This is the standard starting point for barrier methods; see \citet[\S11.3]{boyd_vandenberghe_2004_convex}.
+The model example is the positive half-line \(x>0\), where the function \(-\log x\) is mild in the interior and diverges as \(x\downarrow 0\).
+Barrier methods use the same idea in higher-dimensional constrained problems.
+To make the discussion concrete, consider the convex problem
+\begin{equation}
+  \min_{x\in\R^d} f(x)
+  \quad\text{s.t.}\quad
+  g_i(x)\le 0,\ i=1,\dots,m,
+  \qquad
+  Ax=b,
+  \label{eq:barrier-primal}
+\end{equation}
+where $f$ and the $g_i$ are convex and twice differentiable, and $A$ has full row rank.
+We assume there exists a strictly feasible point $\tilde x$ with $g_i(\tilde x)<0$ for all $i$ and $A\tilde x=b$.
+
+For the inequalities $g_i(x)\le 0$, the logarithmic barrier is
+\[
+  \phi(x) \coloneqq -\sum_{i=1}^m \log\bigl(-g_i(x)\bigr),
+  \qquad
+  \operatorname{dom}\phi = \{x:\ g_i(x)<0\ \text{for all}\ i\}.
+\]
+For a parameter $t>0$, define the barrier objective
+\[
+  F_t(x)\coloneqq t f(x)+\phi(x).
+\]
+The associated centering problem is
+\begin{equation}
+  x^\star(t)\in \argmin_{x}\; F_t(x)
+  \quad\text{s.t.}\quad
+  Ax=b.
+  \label{eq:centering-problem}
+\end{equation}
+The barrier term $\phi$ keeps iterates strictly feasible, while increasing $t$ pushes the minimizer of $F_t$ toward a solution of the original constrained problem.
+
+For later use, it is helpful to record the derivatives of $\phi$:
+\begin{align*}
+  \nabla \phi(x)
+  &= -\sum_{i=1}^m \frac{1}{g_i(x)}\,\nabla g_i(x), \\
+  \nabla^2 \phi(x)
+  &= \sum_{i=1}^m\left(\frac{1}{g_i(x)^2}\,\nabla g_i(x)\nabla g_i(x)^\top - \frac{1}{g_i(x)}\,\nabla^2 g_i(x)\right).
+\end{align*}
+Because $g_i(x)<0$, the coefficients $-1/g_i(x)$ are positive, so (under convexity of $g_i$) the barrier Hessian is positive semidefinite.
+
+The minimizer $x^\star(t)$ of the centering problem traces out the \emph{central path} as $t$ varies.
+It also yields a dual feasible point and a simple duality-gap certificate.
+This central-path viewpoint and the resulting gap bound are the core conclusions of \citet[\S11.3]{boyd_vandenberghe_2004_convex}.
+Let $p^\star$ denote the optimal value of \eqref{eq:barrier-primal}.
+The KKT conditions for \eqref{eq:centering-problem} state that there exists a multiplier $\hat\nu(t)\in\R^p$ such that
+\begin{equation}
+  t\nabla f\bigl(x^\star(t)\bigr) + \nabla \phi\bigl(x^\star(t)\bigr) + A^\top \hat\nu(t)=0,
+  \qquad
+  Ax^\star(t)=b.
+  \label{eq:centering-kkt}
+\end{equation}
+Using the explicit form of $\nabla \phi$, we can rewrite stationarity as
+\[
+  \nabla f\bigl(x^\star(t)\bigr) + \sum_{i=1}^m \lambda_i(t)\,\nabla g_i\bigl(x^\star(t)\bigr) + A^\top \nu(t)=0,
+\]
+where we define
+\[
+  \lambda_i(t)\coloneqq -\frac{1}{t\,g_i(x^\star(t))}>0,
+  \qquad
+  \nu(t)\coloneqq \frac{1}{t}\hat\nu(t).
+\]
+Consider the Lagrangian for \eqref{eq:barrier-primal},
+\[
+  \mathcal{L}(x,\lambda,\nu)\coloneqq f(x) + \sum_{i=1}^m \lambda_i g_i(x) + \nu^\top(Ax-b).
+\]
+In the convex setting, $\lambda(t)\ge 0$ implies that $\mathcal{L}(x,\lambda(t),\nu(t))$ is convex in $x$.
+The stationarity equation above is exactly $\nabla_x \mathcal{L}(x^\star(t),\lambda(t),\nu(t))=0$.
+Since $\mathcal{L}(\cdot,\lambda(t),\nu(t))$ is convex and differentiable, this implies that $x^\star(t)$ minimizes $\mathcal{L}(\cdot,\lambda(t),\nu(t))$, so the dual function value $q(\lambda(t),\nu(t))$ from \cref{subsubsec:kkt} is attained at $x^\star(t)$.
+Since $Ax^\star(t)=b$, this gives
+\[
+  q\bigl(\lambda(t),\nu(t)\bigr)=f\bigl(x^\star(t)\bigr)+\sum_{i=1}^m \lambda_i(t)\,g_i\bigl(x^\star(t)\bigr).
+\]
+Moreover,
+\[
+  \sum_{i=1}^m \lambda_i(t)\,g_i\bigl(x^\star(t)\bigr)
+  = \sum_{i=1}^m \left(-\frac{1}{t\,g_i(x^\star(t))}\right) g_i\bigl(x^\star(t)\bigr)
+  = -\frac{m}{t},
+\]
+so the duality gap for the primal--dual pair $\bigl(x^\star(t),\lambda(t),\nu(t)\bigr)$ equals $m/t$.
+In particular, $f(x^\star(t)) - p^\star \le m/t$.
+Thus, in principle, computing a central point with $m/t\le \varepsilon$ yields an $\varepsilon$-suboptimal solution of \eqref{eq:barrier-primal}.
+See \citet[\S11.2]{boyd_vandenberghe_2004_convex}.
+
+The barrier method computes approximate central points for an increasing sequence of $t$ values, terminating once the duality-gap bound $m/t$ is below a tolerance.
+\begin{algorithm}
+  \caption{Barrier method (logarithmic barrier)}
+  \label{alg:barrier-method}
+  \begin{algorithmic}[1]
+    \Require Convex $f$ and $g_i$, affine constraint $Ax=b$, strictly feasible $x_0$ with $g_i(x_0)<0$
+    \Require Parameters $t_0>0$, $\mu>1$, tolerance $\varepsilon>0$
+    \State $x\gets x_0$, $t\gets t_0$
+    \While{$m/t > \varepsilon$}
+      \State Approximately solve \eqref{eq:centering-problem} starting at $x$ (centering step), and update $x$ to the computed solution
+      \State $t \gets \mu t$
+    \EndWhile
+    \State \Return $x$
+  \end{algorithmic}
+\end{algorithm}
+
+Within each centering step, one can apply Newton's method to minimize $F_t$ subject to $Ax=b$.
+At a current strictly feasible point $x$ with $Ax=b$, let $r\coloneqq \nabla F_t(x)$ and $H\coloneqq \nabla^2 F_t(x)$.
+The equality-constrained Newton step solves the KKT linear system
+\begin{equation}
+  \begin{bmatrix}
+    H & A^\top \\
+    A & 0
+  \end{bmatrix}
+  \begin{bmatrix}
+    \Delta x \\
+    w
+  \end{bmatrix}
+  =
+  \begin{bmatrix}
+    -r \\
+    0
+  \end{bmatrix}.
+  \label{eq:barrier-centering-newton}
+\end{equation}
+One then updates $x\gets x+\alpha \Delta x$ with a backtracking line search that (i) preserves strict feasibility $g_i(x+\alpha\Delta x)<0$ and (ii) decreases $F_t$ (e.g.\ using an Armijo condition).
+See \citet[\S11.3]{boyd_vandenberghe_2004_convex}.

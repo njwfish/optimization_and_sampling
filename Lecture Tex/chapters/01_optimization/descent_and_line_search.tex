@@ -1,0 +1,70 @@
+\subsection{Gradient descent and line search}
+\label{subsec:gradient-descent-line-search}
+
+With the local model from \cref{subsec:optimization-euclidean} in place, we can turn derivative information into an algorithm.
+The two design questions are the search direction and the step size.
+Gradient descent answers the first question by moving opposite the gradient, while fixed-step and line-search rules answer the second.
+
+\subsubsection{Descent methods}
+\label{subsec:descent-methods}
+
+With this Euclidean setup in place, we can describe the generic update template behind many first-order algorithms.
+Many iterative methods for~\eqref{eq:unconstrained-min} have the form
+\begin{equation}
+  x^{(k+1)} = x^{(k)} + t^{(k)} \Delta x^{(k)},
+  \qquad k = 0,1,2,\dots,
+  \label{eq:generic-descent}
+\end{equation}
+where $t^{(k)} > 0$ is a step size (learning rate) and $\Delta x^{(k)}$ is a descent direction chosen so that taking a small step decreases $f$.
+
+\begin{definition}[Descent direction]
+Let $f$ be differentiable at $x$.
+A direction $d$ is a descent direction for $f$ at $x$ if $\nabla f(x)^\top d < 0$.
+\end{definition}
+
+\begin{lemma}[Why $\nabla f(x)^\top d < 0$ matters]
+If $\nabla f(x)^\top d < 0$, then for all sufficiently small $t>0$,
+\[
+f(x+td) < f(x).
+\]
+\end{lemma}
+\begin{proof}
+Consider $\phi(t) = f(x+td)$.
+Then $\phi'(0)=\nabla f(x)^\top d < 0$, so $\phi(t) < \phi(0)$ for all small enough $t>0$.
+\end{proof}
+
+\begin{algorithm}
+  \caption{Generic descent method}
+  \label{alg:generic-descent}
+  \begin{algorithmic}[1]
+    \Require Objective $f$, initial point $x^{(0)}$, rule for choosing a descent direction, rule for choosing a step size, stopping criterion
+    \Ensure Final iterate $x$
+    \State $k \gets 0$
+    \While{stopping criterion not met}
+      \State Choose $\Delta x^{(k)}$ such that $\nabla f(x^{(k)})^\top \Delta x^{(k)} < 0$.
+      \State Choose a step size $t^{(k)} > 0$.
+      \State $x^{(k+1)} \gets x^{(k)} + t^{(k)}\Delta x^{(k)}$.
+      \State $k \gets k + 1$
+    \EndWhile
+    \State \Return $x^{(k)}$
+  \end{algorithmic}
+\end{algorithm}
+
+\subsubsection{Step-size selection}
+\label{subsec:line-search}
+
+The remaining design choice in \cref{alg:generic-descent} is the step size.
+There are two standard regimes.
+If a smoothness bound is available, a fixed step size gives a clean baseline and leads to explicit rates.
+If that information is unavailable or too conservative, a line search chooses a step size adaptively from local function values.
+
+\input{chapters/01_optimization/chunks/gd_03_body}
+
+When that scale is unknown, backtracking gives a local replacement.
+\input{chapters/01_optimization/chunks/gd_07_body}
+
+\subsubsection{Gradient descent on quadratics}
+
+With step-size rules in hand, quadratics provide the cleanest exact benchmark for how first-order methods behave under conditioning.
+When a smoothness scale is available in advance, constant-step gradient descent gives a simple baseline, and for strongly convex quadratics the rate can be computed exactly from the spectrum.
+\input{chapters/01_optimization/chunks/gd_05_body}

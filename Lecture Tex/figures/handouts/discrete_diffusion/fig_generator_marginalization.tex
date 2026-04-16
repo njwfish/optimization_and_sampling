@@ -1,0 +1,110 @@
+\begin{tikzpicture}[>=Stealth,font=\small]
+  \tikzset{
+    panel/.style={
+      rounded corners=6pt,
+      draw=stat221Gray!35,
+      fill=stat221GrayLight,
+      line width=0.8pt,
+    },
+    ribbon/.style={
+      rounded corners=6pt,
+      draw=stat221Blue!55!black,
+      fill=stat221BlueLight,
+      line width=0.8pt,
+    },
+    paneltitle/.style={
+      font=\small\bfseries,
+      text=stat221Gray,
+      align=center,
+      text width=3.9cm,
+    },
+    noisy/.style={
+      draw=stat221Gray!70!black,
+      fill=white,
+      rounded corners=3pt,
+      line width=0.85pt,
+      minimum width=1.82cm,
+      minimum height=0.88cm,
+      inner sep=1pt,
+    },
+    blueclean/.style={
+      draw=stat221Blue!75!black,
+      fill=stat221BlueLight,
+      rounded corners=3pt,
+      line width=0.9pt,
+      minimum width=1.60cm,
+      minimum height=0.86cm,
+      inner sep=1pt,
+    },
+    greenclean/.style={
+      draw=stat221Green!70!black,
+      fill=stat221GreenLight,
+      rounded corners=3pt,
+      line width=0.9pt,
+      minimum width=1.60cm,
+      minimum height=0.86cm,
+      inner sep=1pt,
+    },
+    purpleclean/.style={
+      draw=stat221Purple!70!black,
+      fill=stat221PurpleLight,
+      rounded corners=3pt,
+      line width=0.9pt,
+      minimum width=1.60cm,
+      minimum height=0.86cm,
+      inner sep=1pt,
+    },
+    blueflow/.style={->,stat221Blue!75!black,line cap=round},
+    greenflow/.style={->,stat221Green!70!black,line cap=round},
+    purpleflow/.style={->,stat221Purple!70!black,line cap=round},
+  }
+
+  \path[use as bounding box] (-0.15,-1.55) rectangle (14.65,5.10);
+
+  \foreach \x/\title in {
+    0.0/{1. Endpoint posterior},
+    4.95/{2. Conditioned repairs},
+    9.90/{3. Posterior average}
+  } {
+    \draw[panel] (\x,0) rectangle ++(4.50,4.55);
+    \node[paneltitle] at (\x+2.25,4.08) {\title};
+  }
+
+  % Panel 1
+  \node[noisy]       (qxt) at (2.25,1.15) {\texttt{[M]A}};
+  \node[blueclean]   (qaa) at (0.95,2.95) {\texttt{AA}};
+  \node[greenclean]  (qba) at (2.25,2.95) {\texttt{BA}};
+  \node[purpleclean] (qca) at (3.55,2.95) {\texttt{CA}};
+  \draw[blueflow,line width=1.8pt]   (qxt) -- node[left,font=\small,text=stat221Blue!75!black] {$0.5$} (qaa);
+  \draw[greenflow,line width=1.35pt] (qxt) -- node[right,font=\small,text=stat221Green!55!black] {$0.3$} (qba);
+  \draw[purpleflow,line width=1.05pt] (qxt) -- node[right,font=\small,text=stat221Purple!60!black] {$0.2$} (qca);
+
+  % Panel 2
+  \node[noisy]       (cxta) at (5.80,3.05) {\texttt{[M]A}};
+  \node[blueclean]   (caa)  at (8.20,3.05) {\texttt{AA}};
+  \draw[blueflow,line width=1.45pt] (cxta) -- node[above,font=\small,text=stat221Blue!75!black] {$c_t$} (caa);
+  \node[noisy]       (cxtb) at (5.80,1.95) {\texttt{[M]A}};
+  \node[greenclean]  (cba)  at (8.20,1.95) {\texttt{BA}};
+  \draw[greenflow,line width=1.45pt] (cxtb) -- node[above,font=\small,text=stat221Green!55!black] {$c_t$} (cba);
+  \node[noisy]       (cxtc) at (5.80,0.85) {\texttt{[M]A}};
+  \node[purpleclean] (cca)  at (8.20,0.85) {\texttt{CA}};
+  \draw[purpleflow,line width=1.45pt] (cxtc) -- node[above,font=\small,text=stat221Purple!60!black] {$c_t$} (cca);
+
+  % Panel 3
+  \node[noisy]       (mxt) at (11.05,1.75) {\texttt{[M]A}};
+  \node[blueclean]   (maa) at (13.45,3.05) {\texttt{AA}};
+  \node[greenclean]  (mba) at (13.45,1.75) {\texttt{BA}};
+  \node[purpleclean] (mca) at (13.45,0.45) {\texttt{CA}};
+  \draw[blueflow,line width=2.1pt]   (mxt) -- node[above,font=\small,text=stat221Blue!75!black] {$0.5\,c_t$} (maa);
+  \draw[greenflow,line width=1.55pt] (mxt) -- node[above,font=\small,text=stat221Green!55!black] {$0.3\,c_t$} (mba);
+  \draw[purpleflow,line width=1.2pt] (mxt) -- node[below,font=\small,text=stat221Purple!60!black] {$0.2\,c_t$} (mca);
+
+  \draw[ribbon] (0.35,-1.22) rectangle (14.20,-0.18);
+  \node[text=stat221Gray,align=center] at (7.28,-0.70) {%
+    \(\displaystyle
+      Q_t^{\mathrm{rev}}(x^{1\to v}\mid x)
+      =
+      \sum_{x_0\in S} Q_t^{x_0}(x^{1\to v}\mid x)\,q_{0\mid t}(x_0\mid x)
+      =
+      c_t\,q_{0\mid t}(X_{0,1}=v\mid X_t=x)\)};
+\end{tikzpicture}

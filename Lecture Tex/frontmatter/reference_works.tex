@@ -1,0 +1,23 @@
+\section*{Reference works}
+\addcontentsline{toc}{section}{Reference works}
+
+These notes are intended to be self-contained, but the following references are used repeatedly across the main units.
+For convex optimization, duality, KKT conditions, line search, and Newton's method, the main background reference is \citet[Chs.~2--3, 5, and 9--11]{boyd_vandenberghe_2004_convex}.
+For conjugate-gradient methods and their optimization interpretation, we also use \citet[Ch.~5]{nocedal_wright_2006_numerical}.
+
+For Monte Carlo sampling, importance sampling, Metropolis--Hastings, Gibbs sampling, and sequential Monte Carlo, we primarily use \citet[Chs.~2, 5--6, and \S\S3.4.3--3.4.4]{liu_2002_monte_carlo}.
+For Hamiltonian Monte Carlo and the geometry of typical sets, the two references most closely aligned with the notes are \citet[\S3 and App.~A.1]{betancourt_2017_hmc_conceptual} and \citet[\S\S3.2--4.2]{neal_2011_hmc}.
+For theorem-level results on HMC irreducibility, Harris recurrence, and geometric ergodicity, see \citet[Thms.~1--2 and 9]{durmus_moulines_saksman_2019_hmc_convergence}.
+For the No-U-Turn sampler and dual-averaged adaptation, see \citet[\S3 and \S3.2]{hoffman_gelman_2014_nuts}.
+For modern multi-chain diagnostics, especially rank-normalized split-$\hat R$ and bulk/tail effective sample size, see \citet[\S\S3.2--4.5]{vehtari_gelman_simpson_carpenter_burkner_2021_rank_normalization}.
+For stochastic gradient Langevin dynamics, see \citet[\S\S2--3]{welling_teh_2011_sgld}; for replica-exchange tempering and ladder-design heuristics, see \citet[\S\S2.1--2.3]{earl_deem_2005_parallel_tempering}.
+For quantitative convergence of ULA to its biased limit under log-Sobolev assumptions, and for explicit bias bounds for that limit, see \citet[Thm.~1 and \S7.1]{vempala_wibisono_2019_ula_isoperimetry}.
+
+For constant-step stochastic-gradient stationary-law heuristics, see \citet[pp.~1--2]{mandt_hoffman_blei_2015_ct_limit_sgd}; for clean convergence guarantees for SGD under convex and Polyak--\L{}ojasiewicz assumptions, we use \citet[Thms.~5.3 and 5.10]{garrigos_gower_2024_handbook}.
+For expectation--maximization as a lower-bound method and for population/local analyses of the EM map, we use \citet[\S2.1 and \S3]{balakrishnan_wainwright_yu_2014_em}.
+For mean-field variational families, coordinate-ascent VI, and conjugate exponential-family updates, we use \citet[\S\S2.3--2.4 and 4.1--4.2]{blei_kucukelbir_mcauliffe_2017_vi_review}.
+For variational autoencoders and the reparameterization trick, the main references are \citet[\S\S2.2--2.4]{kingma_welling_2014_aevb} and \citet[\S\S3--4]{rezende_mohamed_wierstra_2014_stochastic_backpropagation}.
+For practical failure modes of amortized VI, especially posterior collapse and bottleneck-induced representation effects, see \citet[\S\S3--4]{he_spokoyny_neubig_bergkirkpatrick_2019_lagging_inference} and \citet[\S\S4.2--5]{burgess_higgins_pal_matthey_watters_desjardins_lerchner_2018_understanding_bvae}.
+
+For the diffusion unit, \citet[Def.~1 and \S2]{albergo_boffi_vanden_eijnden_2025_stochastic_interpolants} supplies the stochastic-interpolant and common-marginal viewpoint, \citet[Thm.~2 and \S\S3.1--4]{lipman_chen_ben_hamu_nickel_le_2023_flow_matching} supplies the core conditional-flow-matching regression result, and \citet[Thms.~11--12, 17 and \S4.1]{holderrieth_erives_2026_intro_flow_matching} supplies the bridge-dynamics, transport, and score/velocity identities.
+For guidance, inverse-problem conditioning, and modern sampler design inside that same framework, we repeatedly use \citet[\S\S8.1--8.4 and \S9.2.4]{lai_song_kim_mitsufuji_ermon_2025_principles_diffusion}; for the discrete-time ELBO viewpoint and its relation to continuous-time constructions, see also \citet[\S3.5, eqs.~(11)--(12)]{kingma_salimans_poole_ho_2021_variational_diffusion}.

@@ -1,0 +1,311 @@
+\subsection{Regression and reverse-time simulation}
+\label{subsec:diffusion-regression-simulation}
+
+Once the exact bridge picture has been reduced to tractable posterior summaries, the practical problem is to learn those summaries and discretize the resulting reverse-time dynamics.
+In Euclidean models this means regressing infinitesimal objects such as the velocity field and, when the bridge does not provide an explicit conversion formula, either the score itself or another summary from which the score can be recovered.
+After time discretization the same bridge can also be written as a latent-path model with an ELBO objective, but that is a later reformulation of the same bridge rather than the starting point.
+
+\subsubsection{Reverse-time sampling as regression}
+
+The reverse-time family in \Cref{prop:si-family-of-sdes} involves both the velocity field \(b(t,x)\) and the score \(s(t,x)=\nabla\log p_t(x)\).
+In principle one could instead parameterize the full posterior law \(q_{0\mid t}(\cdot\mid x)\) and use the exact distributional sampler from \Cref{thm:distributional-posterior-learning}.
+Euclidean models usually do not do that, because the learned object would be a full conditional distribution on \(\R^d\) at every time.
+This is the Euclidean tractability move from the posterior viewpoint.
+Rather than parameterizing the full posterior, we ask for lower-dimensional summaries of it.
+One natural summary is the conditional expectation \(b(t,x)=\E[\dot X_t\mid X_t=x]\), which is exactly the marginal velocity appearing in the transport equation and in flow matching.
+For the linear Gaussian bridge, \Cref{prop:score-from-endpoint-mean} shows that both the score and the posterior mean of the \(t=0\) endpoint are explicit functions of that same velocity field.
+That special algebraic reduction is the running example in this subsection.
+Outside such specializations, learning \(b\) alone does not in general determine the reverse-time SDE: one also needs either a separate score model or another bridge-specific relation that recovers the score from the learned summary.
+Once that reduction has been made, two practical questions remain:
+how to learn the summary, and how to discretize the reverse-time dynamics determined by it.
+
+For a general stochastic interpolant, the regression target is the conditional velocity $\dot X_t$ from \eqref{eq:si-velocity-def}.
+From this point onward we use the linear Gaussian bridge as the running example, because it makes the recovery formulas completely explicit:
+\[
+  m(t,x)=\frac{\sigma'(t)x-\sigma(t)b(t,x)}{D(t)},
+  \qquad
+  \nabla\log p_t(x)=\frac{\alpha'(t)x-\alpha(t)b(t,x)}{\sigma(t)D(t)},
+  \qquad
+  D(t)=\alpha(t)\sigma'(t)-\sigma(t)\alpha'(t).
+\]
+At the level of updates, three parts of the course now line up:
+\[
+  \text{gradient descent:}\qquad x_{k+1}=x_k-\eta \nabla f(x_k),
+\]
+\[
+  \text{ULA:}\qquad x_{k+1}=x_k+\eta \nabla\log \pi(x_k)+\sqrt{2\eta}\,\xi_k,
+  \qquad \xi_k\sim\mathcal{N}(0,I_d),
+\]
+\[
+  \text{reverse diffusion:}\qquad
+  x_{t_k}
+  =
+  x_{t_{k+1}}
+  +
+  \Delta t\,\bigl(b(t,x_{t_{k+1}})-\varepsilon(t)s(t,x_{t_{k+1}})\bigr)
+  +
+  \sqrt{2\,\varepsilon(t)|\Delta t|}\,\xi_k,
+\]
+with $\Delta t=t_k-t_{k+1}<0$.
+The optimization update uses only drift, Langevin adds calibrated noise to target a fixed distribution, and diffusion samplers use the same drift-noise template for a time-varying bridge.
+The stationary-path case in the previous subsection recovers Langevin exactly.
+For the present linear Gaussian bridge, the operational point is that once \(b\) is learned, the score needed by the reverse-time sampler is known as well through \Cref{prop:score-from-endpoint-mean}.
+The familiar straight-line bridge is recovered by $\alpha(t)=1-t$ and $\sigma(t)=t$.
+More general Gaussian bridges inherit the transformed-density and Cholesky issues from \Cref{subsubsec:transformed-densities,subsubsec:cholesky-geometry}.
+
+\subsubsection{Conditional and marginal flow matching}
+
+We learn \(b\) by regression on synthetic bridge pairs.
+Sample \(x_0\sim p_0\), \(t\sim\mathrm{Unif}[0,1]\), and \(z\sim\mathcal{N}(0,I_d)\), then form
+\[
+  x_t \coloneqq \alpha(t)x_0+\sigma(t)z,
+  \qquad
+  v_t \coloneqq \alpha'(t)x_0+\sigma'(t)z.
+\]
+Since $v_t=\dot X_t$ for the path \eqref{eq:gaussian-bridge-path}, a least-squares regression of $v_t$ on $(t,x_t)$ yields an estimator of $b(t,x)=\E[\dot X_t\mid X_t=x]$.
+This is the conditional flow matching objective specialized to the linear Gaussian bridge \citep[\S3.2]{lipman_chen_ben_hamu_nickel_le_2023_flow_matching}; the corresponding squared-loss equivalence with the marginal target is also stated in \citet[Thm.~12]{holderrieth_erives_2026_intro_flow_matching}.
+
+\begin{proposition}[Flow matching vs.\ conditional flow matching (squared loss)]
+\label{prop:cfm-vs-fm-squared-loss}
+Fix $t\in[0,1]$ and let $U_t$ be a random vector and $X_t$ a random variable on $\R^d$.
+Define the \emph{marginal target} $b(t,x)\coloneqq\E[U_t\mid X_t=x]$.
+Then for any measurable predictor $v_\theta(t,\cdot):\R^d\to\R^d$,
+\begin{equation}
+  \E\!\left[\norm{v_\theta(t,X_t)-U_t}_2^2\right]
+  =
+  \E\!\left[\norm{v_\theta(t,X_t)-b(t,X_t)}_2^2\right]
+  +
+  \E\!\left[\norm{U_t-b(t,X_t)}_2^2\right],
+  \label{eq:cfm-fm-pythagorean}
+\end{equation}
+so the two objectives differ by a constant independent of~$\theta$.
+\end{proposition}
+\begin{proof}
+Write $U_t=b(t,X_t)+\bigl(U_t-b(t,X_t)\bigr)$ and expand the square:
+\[
+  \norm{v_\theta(t,X_t)-U_t}_2^2
+  =
+  \norm{v_\theta(t,X_t)-b(t,X_t)}_2^2
+  +
+  \norm{U_t-b(t,X_t)}_2^2
+  -2\ip{v_\theta(t,X_t)-b(t,X_t)}{U_t-b(t,X_t)}.
+\]
+Taking expectations, the cross term vanishes by conditioning on $X_t$:
+\[
+  \E\!\left[\ip{v_\theta(t,X_t)-b(t,X_t)}{U_t-b(t,X_t)}\right]
+  =
+  \E\!\left[\ip{v_\theta(t,X_t)-b(t,X_t)}{\E[U_t-b(t,X_t)\mid X_t]}\right]=0.
+\]
+This yields \eqref{eq:cfm-fm-pythagorean}.
+\end{proof}
+
+In particular, minimizing the ``conditional'' objective $\E[\norm{v_\theta(t,X_t)-U_t}_2^2]$ is equivalent to minimizing the ``marginal'' objective $\E[\norm{v_\theta(t,X_t)-b(t,X_t)}_2^2]$.
+This is the key justification for conditional flow matching \citep[Thm.~2]{lipman_chen_ben_hamu_nickel_le_2023_flow_matching}; see also \citet[Thm.~12]{holderrieth_erives_2026_intro_flow_matching}.
+Applied to a stochastic interpolant, we simply take $U_t=\dot X_t$.
+In the linear Gaussian bridge, any endpoint-mean or score estimate is then recovered algebraically from the learned velocity field via \Cref{prop:score-from-endpoint-mean}.
+
+\subsubsection{Bridge regression training}
+\label{subsubsec:diffusion-training-sampling}
+
+For the linear Gaussian bridge, the training procedure is simulation-free: we only sample \((X_0,Z)\) and evaluate \eqref{eq:gaussian-bridge-path}.
+The regression target is the conditional path derivative, and in this one-network specialization the learned field \(b_\theta\) is the only network we need.
+
+\begin{algorithm}
+  \caption{Bridge regression training for the linear Gaussian bridge}
+  \label{alg:bridge-regression-training}
+  \begin{algorithmic}[1]
+    \Require Data sampler for \(p_0\), schedules $\alpha,\sigma$, model $b_\theta(t,x)$, training distribution for $t$ (e.g.\ $\mathrm{Unif}[0,1]$)
+    \For{training steps}
+      \State Sample \(x_0\sim p_0\), $t\sim \mathrm{Unif}[0,1]$, $z\sim\mathcal{N}(0,I_d)$
+      \State $x_t \gets \alpha(t)x_0+\sigma(t)z$ \Comment{bridge sample}
+      \State $v_t \gets \alpha'(t)x_0+\sigma'(t)z$ \Comment{$\dot X_t$ target}
+      \State $\ell \gets \norm{b_\theta(t,x_t)-v_t}_2^2$
+      \State Take a gradient step on $\ell$
+    \EndFor
+  \end{algorithmic}
+\end{algorithm}
+
+\subsubsection{Reverse-time simulation}
+
+In the linear Gaussian bridge, the sampling procedure chooses a reverse-time dynamics from the common-marginal family in \Cref{prop:si-family-of-sdes} and discretizes it using the learned velocity and the score recovered from it via \Cref{prop:score-from-endpoint-mean}.
+Positive $\varepsilon$ gives the stochastic samplers, and $\varepsilon\equiv 0$ recovers the deterministic probability-flow ODE.
+
+\begin{algorithm}
+  \caption{Sampling by reverse-time dynamics}
+  \label{alg:bridge-sampling}
+  \begin{algorithmic}[1]
+    \Require Base sampler for \(p_1\), schedules $\alpha,\sigma$, time grid $1=t_K>\cdots>t_0=0$, schedule $\varepsilon(t)\ge 0$, learned model $b_\theta$
+    \State Sample \(X_{t_K}\sim p_1\)
+    \For{$k=K-1,K-2,\dots,0$}
+      \State $t \gets t_{k+1}$,\quad $x \gets X_{t_{k+1}}$
+      \State $b \gets b_\theta(t,x)$ \Comment{velocity estimate}
+      \State $D \gets \alpha(t)\sigma'(t)-\sigma(t)\alpha'(t)$
+      \State $s \gets \bigl(\alpha'(t)x-\alpha(t)b\bigr)\big/\bigl(\sigma(t)D\bigr)$ \Comment{score estimate, \Cref{prop:score-from-endpoint-mean}}
+      \State $b_{\mathrm{rev}} \gets b - \varepsilon(t)\,s$
+      \State $\Delta t \gets t_k-t_{k+1}$ \Comment{$\Delta t<0$}
+      \State Sample $\xi\sim\mathcal{N}(0,I_d)$
+      \State $X_{t_k} \gets x + \Delta t\, b_{\mathrm{rev}} + \sqrt{2\,\varepsilon(t)\,|\Delta t|}\,\xi$ \Comment{Euler--Maruyama step}
+    \EndFor
+    \State \Return $X_{t_0}$ \Comment{approximate sample from \(p_0\)}
+  \end{algorithmic}
+\end{algorithm}
+
+In this linear Gaussian setting, the same learned model supports the whole family of reverse-time dynamics through the choice of \(\varepsilon\).
+In either case, once $b_\theta$ is learned, the posterior mean estimate of the data point is explicit:
+$\hat x_0(t,x)\coloneqq \bigl(\sigma'(t)x-\sigma(t)b_\theta(t,x)\bigr)\big/\bigl(\alpha(t)\sigma'(t)-\sigma(t)\alpha'(t)\bigr)$.
+This is the promised reduction from sampling to regression:
+for this bridge, reverse-time simulation reduces to learning one conditional expectation, after which the score and the sampler follow from the known Gaussian bridge identities.
+
+\subsubsection{Discrete-time ELBO connection}
+\label{subsubsec:diffusion-elbo}
+
+The same bridge can also be recorded on a time grid.
+Then \(x_0\) is observed, \(x_{1:K}\) are latent bridge states, and the learned reverse chain \(p_\theta(x_{0:K})\) is fit by the ELBO identity from \Cref{prop:elbo-identity}.
+The fixed forward bridge supplies a reference law \(r_{\mathrm{fwd}}(x_{1:K}\mid x_0)\) on latent paths, so the discrete-time ELBO is the grid-level version of the same reverse-bridge learning problem \citep[\S3.5, eqs.~(11)--(12)]{kingma_salimans_poole_ho_2021_variational_diffusion}.
+Throughout this subsection, \(r_{\mathrm{fwd}}\) denotes this fixed grid-level forward law and its induced conditionals on the latent path, while the earlier posterior of the \(t=0\) endpoint remains \(q_{0\mid t}\).
+
+Fix a grid \(0=t_0<\cdots<t_K=1\) and write \(X_k\coloneqq X_{t_k}\).
+Assume the discretized bridge law is Markov with kernels \(r_{\mathrm{fwd}}(x_k\mid x_{k-1})\), so that
+\[
+  r_{\mathrm{fwd}}(x_{1:K}\mid x_0)
+  =
+  \prod_{k=1}^K r_{\mathrm{fwd}}(x_k\mid x_{k-1}).
+\]
+The learned reverse model is
+\[
+  p_\theta(x_{0:K})
+  \coloneqq
+  p_1(x_K)\prod_{k=1}^K p_\theta(x_{k-1}\mid x_k).
+\]
+The bridge prescribes \(r_{\mathrm{fwd}}(x_{1:K}\mid x_0)\) in advance, and training only adjusts the reverse transitions \(p_\theta(x_{k-1}\mid x_k)\).
+
+\begin{proposition}[ELBO for a discretized diffusion bridge]
+\label{prop:diffusion-elbo}
+For every data point \(x_0\), the ELBO from \Cref{prop:elbo-identity} with latent variables \(x_{1:K}\) is
+\[
+  \mathcal{L}_{\mathrm{diff}}(\theta;x_0)
+  \coloneqq
+  \E_{r_{\mathrm{fwd}}(x_{1:K}\mid x_0)}
+  \bigl[\log p_\theta(x_{0:K})-\log r_{\mathrm{fwd}}(x_{1:K}\mid x_0)\bigr]
+  \le \log p_\theta(x_0).
+\]
+Moreover,
+\begin{align}
+  -\mathcal{L}_{\mathrm{diff}}(\theta;x_0)
+  &=
+  \operatorname{KL}\!\bigl(r_{\mathrm{fwd}}(x_K\mid x_0)\,\|\,p_1\bigr)
+  +
+  \E_{r_{\mathrm{fwd}}(x_1\mid x_0)}\!\bigl[-\log p_\theta(x_0\mid x_1)\bigr]
+  \nonumber\\
+  &\quad+
+  \sum_{k=2}^K
+  \E_{r_{\mathrm{fwd}}(x_k\mid x_0)}
+  \operatorname{KL}\!\bigl(
+    r_{\mathrm{fwd}}(x_{k-1}\mid x_k,x_0)
+    \,\|\,p_\theta(x_{k-1}\mid x_k)
+  \bigr).
+  \label{eq:diffusion-elbo}
+\end{align}
+\end{proposition}
+\begin{proof}
+Apply \Cref{prop:elbo-identity} with latent variables \(z=x_{1:K}\).
+This gives the ELBO inequality immediately.
+To obtain the decomposition, factor the forward chain backward:
+\[
+  r_{\mathrm{fwd}}(x_{1:K}\mid x_0)
+  =
+  r_{\mathrm{fwd}}(x_K\mid x_0)\prod_{k=2}^K r_{\mathrm{fwd}}(x_{k-1}\mid x_k,x_0).
+\]
+Substituting the definitions of \(p_\theta(x_{0:K})\) and \(r_{\mathrm{fwd}}(x_{1:K}\mid x_0)\) into \(\mathcal{L}_{\mathrm{diff}}(\theta;x_0)\) yields
+\begin{align*}
+  \mathcal{L}_{\mathrm{diff}}(\theta;x_0)
+  &=
+  \E\!\left[\log p_1(X_K)-\log r_{\mathrm{fwd}}(X_K\mid x_0)\right]
+  +
+  \E\!\left[\log p_\theta(x_0\mid X_1)\right] \\
+  &\quad+
+  \sum_{k=2}^K
+  \E\!\left[
+    \log p_\theta(X_{k-1}\mid X_k)
+    -
+    \log r_{\mathrm{fwd}}(X_{k-1}\mid X_k,x_0)
+  \right],
+\end{align*}
+where all expectations are under \(r_{\mathrm{fwd}}(x_{1:K}\mid x_0)\).
+The first line is the negative of the prior and reconstruction terms.
+For each \(k\ge 2\), conditioning on \(X_k\) turns the \(k\)-th summand into the negative KL divergence
+\[
+  -\E_{r_{\mathrm{fwd}}(x_k\mid x_0)}
+  \operatorname{KL}\!\bigl(
+    r_{\mathrm{fwd}}(x_{k-1}\mid x_k,x_0)
+    \,\|\,p_\theta(x_{k-1}\mid x_k)
+  \bigr).
+\]
+Collecting terms gives \eqref{eq:diffusion-elbo}.%
+\end{proof}
+
+Each KL term asks the learned reverse transition \(p_\theta(x_{k-1}\mid x_k)\) to match the exact grid-level bridge posterior \(r_{\mathrm{fwd}}(x_{k-1}\mid x_k,x_0)\) on that grid step.
+The term \(\E[-\log p_\theta(x_0\mid x_1)]\) is the reconstruction term, \(\operatorname{KL}(r_{\mathrm{fwd}}(x_K\mid x_0)\|p_1)\) matches the terminal latent law to the reference law, and the interior KL terms measure one-step bridge mismatch along the grid.
+Because the latent variables form an entire path, the posterior-matching problem unfolds into a sum of local KL terms rather than a single global one.
+
+In the running linear Gaussian setting, the same conclusion follows directly from one-step Gaussian conditioning on the grid.
+Write \(\alpha_k\coloneqq \alpha(t_k)\) and \(\sigma_k\coloneqq \sigma(t_k)\), and choose Gaussian forward kernels
+\[
+  r_{\mathrm{fwd}}(x_k\mid x_{k-1})
+  =
+  \mathcal{N}\!\bigl(a_k x_{k-1},\,b_k^2 I_d\bigr)
+\]
+with coefficients chosen so that the resulting marginal law has the same form as the continuous bridge,
+\[
+  X_k=\alpha_k X_0+\sigma_k Z,
+  \qquad
+  Z\sim\mathcal{N}(0,I_d),
+\]
+equivalently,
+\[
+  \alpha_k=a_k\alpha_{k-1},
+  \qquad
+  \sigma_k^2=a_k^2\sigma_{k-1}^2+b_k^2.
+\]
+Conditioning the Gaussian prior \(X_{k-1}\mid X_0=x_0\sim \mathcal{N}(\alpha_{k-1}x_0,\sigma_{k-1}^2I_d)\) on the observation \(X_k=x_k\) gives
+\[
+  r_{\mathrm{fwd}}(x_{k-1}\mid x_k,x_0)
+  =
+  \mathcal{N}\!\bigl(\widetilde\mu_k(x_k,x_0),\,\widetilde\Sigma_k\bigr),
+\]
+where
+\[
+  \widetilde\mu_k(x_k,x_0)
+  =
+  \frac{a_k\sigma_{k-1}^2}{\sigma_k^2}\,x_k
+  +
+  \frac{\alpha_{k-1}b_k^2}{\sigma_k^2}\,x_0,
+  \qquad
+  \widetilde\Sigma_k
+  =
+  \frac{\sigma_{k-1}^2b_k^2}{\sigma_k^2}\,I_d.
+\]
+If the learned reverse kernel uses that same covariance,
+\[
+  p_\theta(x_{k-1}\mid x_k)
+  =
+  \mathcal{N}\!\bigl(\mu_\theta(x_k,k),\,\widetilde\Sigma_k\bigr),
+\]
+then the \(k\)-th KL term in \eqref{eq:diffusion-elbo} is
+  \[
+  \operatorname{KL}\!\bigl(
+    r_{\mathrm{fwd}}(x_{k-1}\mid x_k,x_0)
+    \,\|\,p_\theta(x_{k-1}\mid x_k)
+  \bigr)
+  =
+  \frac{1}{2}
+  \bigl(\widetilde\mu_k(x_k,x_0)-\mu_\theta(x_k,k)\bigr)^\top
+  \widetilde\Sigma_k^{-1}
+  \bigl(\widetilde\mu_k(x_k,x_0)-\mu_\theta(x_k,k)\bigr).
+\]
+So in our linear Gaussian bridge, each ELBO term is literally a weighted least-squares fit to the exact one-step posterior mean.
+Because \(x_k=\alpha_k x_0+\sigma_k z\), that target mean is an affine function of \(x_0\) and equivalently of the injected noise \(z\).
+This is the same Gaussian posterior-mean algebra emphasized in \citet[\S2.2.5, especially eq.~(2.2.11)]{lai_song_kim_mitsufuji_ermon_2025_principles_diffusion}.
+This is the grid-level version of the earlier endpoint-mean algebra from \Cref{prop:score-from-endpoint-mean}: different prediction parameterizations are just different ways of writing the same conditional Gaussian mean.
+
+The discrete-time formulas therefore encode the same reverse-bridge learning problem in grid form.

@@ -1,0 +1,55 @@
+\begin{tikzpicture}
+  \begin{axis}[
+    name=plot1,
+    width=0.28\textwidth,
+    height=0.22\textwidth,
+    xmin=-4, xmax=4,
+    ymin=0, ymax=0.55,
+    axis lines=none,
+    ticks=none,
+    domain=-4:4,
+    samples=200,
+  ]
+    \addplot[black, thick] {0.4*exp(-x^2/2)};
+    \addplot[stat221Red, thick] {0.36*exp(-x^2/(2*1.1*1.1))};
+    \node[anchor=north] at (axis cs:0,0.53) {\footnotesize Good};
+  \end{axis}
+
+  \begin{axis}[
+    name=plot2,
+    at={(plot1.east)},
+    xshift=1.1cm,
+    anchor=west,
+    width=0.28\textwidth,
+    height=0.22\textwidth,
+    xmin=-4, xmax=4,
+    ymin=0, ymax=0.55,
+    axis lines=none,
+    ticks=none,
+    domain=-4:4,
+    samples=200,
+  ]
+    \addplot[black, thick] {0.4*exp(-x^2/2)};
+    \addplot[stat221Red, thick] {0.5*exp(-(x-1.6)^2/(2*0.8*0.8))};
+    \node[anchor=north] at (axis cs:0,0.53) {\footnotesize Bad};
+  \end{axis}
+
+  \begin{axis}[
+    name=plot3,
+    at={(plot2.east)},
+    xshift=1.1cm,
+    anchor=west,
+    width=0.28\textwidth,
+    height=0.22\textwidth,
+    xmin=-4, xmax=4,
+    ymin=0, ymax=0.55,
+    axis lines=none,
+    ticks=none,
+    domain=-4:4,
+    samples=200,
+  ]
+    \addplot[black, thick] {0.4*exp(-x^2/2)};
+    \addplot[stat221Red, thick] {0.28*exp(-x^2/(2*1.6*1.6))};
+    \node[anchor=north] at (axis cs:0,0.53) {\footnotesize Okay};
+  \end{axis}
+\end{tikzpicture}

@@ -1,0 +1,40 @@
+\begin{tikzpicture}[>=Stealth,font=\footnotesize]
+  \path[use as bounding box] (-0.2,-0.30) rectangle (13.8,4.9);
+
+  \begin{scope}
+    \node[anchor=west] at (0.15,4.1) {restricted family + forward KL};
+    \fill[stat221Blue!14] (1.55,2.05) ellipse (1.2 and 0.8);
+    \fill[stat221Blue!14] (4.55,2.05) ellipse (1.2 and 0.8);
+    \draw[stat221Blue!70!black,line width=0.8pt] (1.55,2.05) ellipse (1.2 and 0.8);
+    \draw[stat221Blue!70!black,line width=0.8pt] (4.55,2.05) ellipse (1.2 and 0.8);
+    \draw[stat221Gray!45,dashed,line width=0.5pt] (2.75,2.05) -- (3.35,2.05);
+    \draw[stat221Green!70!black,line width=1.0pt] (1.60,2.05) ellipse (0.95 and 0.62);
+    \node[stat221Blue!75!black,anchor=south] at (1.55,2.95) {$p_\theta(z\mid x)$};
+    \node[stat221Blue!75!black,anchor=south] at (4.55,2.95) {$p_\theta(z\mid x)$};
+    \node[stat221Green!60!black,anchor=west] at (2.25,1.20) {$q(z)\in\mathcal{Q}$};
+    \node[stat221Gray,align=center] at (3.05,0.45) {placing mass in the low-density bridge is expensive,\\so the family often undercovers the posterior};
+  \end{scope}
+
+  \begin{scope}[shift={(7.05,0)}]
+    \node[anchor=west] at (0.10,4.1) {shared approximation across data};
+    \node[draw=stat221Blue!65!black,fill=stat221BlueLight,rounded corners=3pt,minimum width=1.1cm,minimum height=0.7cm] (x1) at (0.95,3.10) {$x_1$};
+    \node[draw=stat221Blue!65!black,fill=stat221BlueLight,rounded corners=3pt,minimum width=1.1cm,minimum height=0.7cm] (x2) at (0.95,2.05) {$x_2$};
+    \node[draw=stat221Blue!65!black,fill=stat221BlueLight,rounded corners=3pt,minimum width=1.1cm,minimum height=0.7cm] (x3) at (0.95,1.00) {$x_3$};
+
+    \node[draw=stat221Purple!70!black,fill=stat221PurpleLight,rounded corners=3pt,minimum width=2.6cm,minimum height=2.35cm,align=center] (enc) at (3.55,2.05) {shared encoder\\$q_\phi(z\mid x)$};
+
+    \node[draw=stat221Green!65!black,fill=stat221GreenLight,rounded corners=3pt,minimum width=2.3cm,minimum height=0.75cm] (q1) at (6.55,3.10) {$q_\phi(z\mid x_1)$};
+    \node[draw=stat221Green!65!black,fill=stat221GreenLight,rounded corners=3pt,minimum width=2.3cm,minimum height=0.75cm] (q2) at (6.55,2.05) {$q_\phi(z\mid x_2)$};
+    \node[draw=stat221Green!65!black,fill=stat221GreenLight,rounded corners=3pt,minimum width=2.3cm,minimum height=0.75cm] (q3) at (6.55,1.00) {$q_\phi(z\mid x_3)$};
+
+    \draw[->,stat221Gray!75,line width=0.8pt] (x1.east) -- (enc.west |- x1.east);
+    \draw[->,stat221Gray!75,line width=0.8pt] (x2.east) -- (enc.west);
+    \draw[->,stat221Gray!75,line width=0.8pt] (x3.east) -- (enc.west |- x3.east);
+
+    \draw[->,stat221Gray!75,line width=0.8pt] (enc.east |- q1.west) -- (q1.west);
+    \draw[->,stat221Gray!75,line width=0.8pt] (enc.east) -- (q2.west);
+    \draw[->,stat221Gray!75,line width=0.8pt] (enc.east |- q3.west) -- (q3.west);
+
+    \node[stat221Gray,align=center] at (3.85,0.24) {one shared map must fit every posterior at once;\\the compromise can miss individual examples};
+  \end{scope}
+\end{tikzpicture}

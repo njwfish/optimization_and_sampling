@@ -1,0 +1,155 @@
+\subsection{Variational inference and the ELBO}
+\label{subsec:vi-elbo}
+
+\subsubsection{From EM free energy to the ELBO}
+
+The transition from EM is literal rather than metaphorical.
+\Cref{prop:em-free-energy-coordinate-ascent} introduced the free-energy functional for a latent-variable model \(p_\theta(x,z)\):
+\[
+  \mathcal{F}(q,\theta;x)
+  =
+  \E_q[\log p_\theta(x,Z)] + H(q),
+\]
+and showed that exact EM alternates between the unrestricted update \(q(z)=p_\theta(z\mid x)\) and a maximization in \(\theta\).
+Variational inference keeps the same objective but restricts the latent law \(q\) to a tractable family.
+This is the only conceptual change: the model \(p_\theta(x,z)\) stays in place, while the exact E-step is relaxed into an optimization problem.
+
+For this subsection we regard \(\theta\) as fixed and write
+\[
+  p_\theta(x,z) = p_\theta(x\mid z)\,p_\theta(z),
+\]
+so the posterior is
+\[
+  p_\theta(z\mid x) = \frac{p_\theta(x,z)}{p_\theta(x)},
+  \qquad
+  p_\theta(x) = \int p_\theta(x,z)\,dz.
+\]
+The evidence \(p_\theta(x)\) is exactly the quantity that makes direct Bayesian inference difficult:
+it is the normalizing constant of the posterior and typically requires a high-dimensional integral.
+Modern latent-variable methods usually introduce the ELBO at exactly this point; see \citet[\S2.2]{kingma_welling_2014_aevb} for the VAE version of the same identity.
+
+With \(\theta\) fixed, the free-energy functional becomes
+\[
+  \mathcal{F}(q,\theta;x)
+  \coloneqq
+  \E_q\!\bigl[\log p_\theta(x,z)\bigr]
+  +
+  H(q),
+\]
+where $H(q)=-\E_q[\log q(z)]$ is the entropy.
+Variational inference keeps this same objective but restricts the $q$-update from all densities to a smaller family
+\[
+  \mathcal{Q} = \{q_\lambda(z): \lambda\in\Lambda\}
+\]
+The ELBO is simply the computational form of this restricted free-energy problem.
+
+\subsubsection{ELBO--KL identity}
+
+This is the same decomposition that underlies EM, now viewed with \(\theta\) fixed and \(q\) ranging over a
+restricted family. Writing it explicitly fixes the KL direction and makes clear why the ELBO is the
+computational surrogate for posterior approximation.
+
+\begin{proposition}[Free-energy and ELBO identity]
+\label{prop:elbo-identity}
+For any density \(q(z)\) supported where \(p_\theta(x,z)>0\),
+\begin{equation}
+  \log p_\theta(x)
+  =
+  \mathcal{F}(q,\theta;x)
+  +
+  \operatorname{KL}\!\bigl(q(z)\,\|\,p_\theta(z\mid x)\bigr),
+  \label{eq:elbo-identity}
+\end{equation}
+Consequently,
+\[
+  \mathcal{F}(q,\theta;x) \le \log p_\theta(x),
+\]
+and maximizing \(\mathcal{F}(q,\theta;x)\) over the variational family is equivalent to minimizing \(\operatorname{KL}(q\|p_\theta(z\mid x))\).
+\end{proposition}
+\begin{proof}
+Starting from the definition of KL divergence and substituting the posterior density,
+\[
+  \operatorname{KL}\!\bigl(q(z)\,\|\,p_\theta(z\mid x)\bigr)
+  =
+  \int q(z)\log\frac{q(z)}{p_\theta(x,z)/p_\theta(x)}\,dz.
+\]
+Expanding the logarithm gives
+\[
+  \operatorname{KL}\!\bigl(q(z)\,\|\,p_\theta(z\mid x)\bigr)
+  =
+  \int q(z)\log q(z)\,dz
+  -
+  \int q(z)\log p_\theta(x,z)\,dz
+  +
+  \log p_\theta(x).
+\]
+Rearranging yields
+\[
+  \log p_\theta(x)
+  =
+  \E_q\!\bigl[\log p_\theta(x,z)-\log q(z)\bigr]
+  +
+  \operatorname{KL}\!\bigl(q(z)\,\|\,p_\theta(z\mid x)\bigr),
+\]
+which is exactly \eqref{eq:elbo-identity} because
+\[
+  \mathcal{F}(q,\theta;x)
+  =
+  \E_q[\log p_\theta(x,z)] + H(q)
+  =
+  \E_q[\log p_\theta(x,z)-\log q(z)].
+\]
+Since KL divergence is nonnegative, \eqref{eq:elbo-identity} implies \(\mathcal{F}(q,\theta;x)\le \log p_\theta(x)\), and the difference between the two objectives is the constant \(\log p_\theta(x)\).%
+\end{proof}
+
+It is conventional to rename the same quantity
+\begin{equation}
+  \mathcal{L}(q;\theta,x)
+  \coloneqq
+  \E_q\!\bigl[\log p_\theta(x,z)-\log q(z)\bigr]
+  =
+  \mathcal{F}(q,\theta;x)
+  \label{eq:elbo-definition}
+\end{equation}
+and call it the \emph{evidence lower bound}, or ELBO.
+The new notation emphasizes the computational point: after fixing \(\theta\), the objective depends only on expectations under the tractable law \(q\), while the intractable evidence \(\log p_\theta(x)\) appears only as an additive constant.
+Thus
+\begin{equation}
+  q^\star
+  \in
+  \argmax_{q\in\mathcal{Q}} \mathcal{L}(q;\theta,x)
+  \quad\Longleftrightarrow\quad
+  q^\star
+  \in
+  \argmin_{q\in\mathcal{Q}} \operatorname{KL}\!\bigl(q(z)\,\|\,p_\theta(z\mid x)\bigr).
+  \label{eq:vi-kl-objective}
+\end{equation}
+This is where VI diverges from both EM and MCMC.
+EM keeps the exact posterior update but alternates it with a parameter maximization, while MCMC constructs a chain with the posterior as its stationary law.
+VI instead replaces posterior sampling or exact posterior evaluation by deterministic optimization over a restricted family.
+
+\subsubsection{Reconstruction--regularization decomposition}
+
+The ELBO also admits a decomposition that is often more interpretable.
+Using \(p_\theta(x,z)=p_\theta(x\mid z)p_\theta(z)\) in \eqref{eq:elbo-definition} gives
+\begin{equation}
+  \mathcal{L}(q;\theta,x)
+  =
+  \E_q[\log p_\theta(x\mid z)]
+  -
+  \operatorname{KL}\!\bigl(q(z)\,\|\,p_\theta(z)\bigr).
+  \label{eq:elbo-reconstruction-regularization}
+\end{equation}
+The first term rewards latent configurations that explain the data well, while the second penalizes variational distributions that drift too far from the prior.
+In latent-variable models this is the usual ``fit minus regularization'' interpretation.
+The decoder/prior language from variational autoencoders is exactly this decomposition written for a model with a fixed prior and a learned conditional distribution \(p_\theta(x\mid z)\) \citep[\S2.2]{kingma_welling_2014_aevb}.
+
+\subsubsection{What forward KL tends to prefer}
+
+There is, however, an important geometric asymmetry in \eqref{eq:vi-kl-objective}.
+The direction $\operatorname{KL}(q\|p)$ heavily penalizes placing mass where the posterior is small, but it is more tolerant of failing to cover every region where the posterior is large.
+With a restrictive family this often leads, as a heuristic rule of thumb, to approximations that understate posterior variance or choose one mode of a multimodal posterior rather than averaging across all of them.
+See \citet[\S2.4 and Fig.~1]{blei_kucukelbir_mcauliffe_2017_vi_review} for a concrete mean-field example of this variance-underestimation effect.
+This is not a flaw in the ELBO identity itself.
+It is the geometric tradeoff created by combining an asymmetric divergence with a tractable but limited family.
+The next subsection makes that tradeoff concrete by studying the most classical restricted family, namely a fully factorized mean-field approximation.

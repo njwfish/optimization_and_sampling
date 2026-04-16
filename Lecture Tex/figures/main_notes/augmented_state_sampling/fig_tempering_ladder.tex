@@ -1,0 +1,69 @@
+\begin{tikzpicture}[>=Stealth,font=\footnotesize]
+  \path[use as bounding box] (-0.15,-0.15) rectangle (12.35,5.00);
+
+  \begin{scope}
+    \node[anchor=west] at (0.1,4.45) {flattened energy landscape};
+
+    \draw[->,stat221Gray!75,line width=0.6pt] (0.6,0.65) -- (0.6,3.85);
+    \draw[->,stat221Gray!75,line width=0.6pt] (0.6,0.65) -- (5.2,0.65);
+    \node[rotate=90,anchor=south,font=\footnotesize] at (0.06,2.25) {effective energy};
+    \node[anchor=north] at (3.05,0.38) {state $x$};
+
+    \draw[black!45,line width=0.9pt]
+      plot[smooth] coordinates {
+        (0.85,3.25) (1.30,1.55) (1.90,1.20) (2.75,2.35)
+        (3.30,2.95) (4.10,1.38) (4.85,1.08) (5.15,3.95)
+      };
+    \draw[stat221Blue!80!black,line width=1.05pt]
+      plot[smooth] coordinates {
+        (0.85,2.70) (1.35,1.30) (2.00,1.00) (2.85,1.95)
+        (3.35,2.30) (4.05,1.18) (4.75,0.95) (5.02,3.45)
+      };
+    \draw[stat221Orange!85!black,line width=1.05pt]
+      plot[smooth] coordinates {
+        (0.85,2.10) (1.40,1.05) (2.05,0.86) (2.95,1.35)
+        (3.45,1.55) (4.12,1.00) (4.75,0.84) (4.97,2.70)
+      };
+
+    \node[black!55,anchor=west] at (5.28,2.92) {$\beta=1$};
+    \node[stat221Blue!80!black,anchor=west] at (5.18,2.12) {$\beta=0.7$};
+    \node[stat221Orange!85!black,anchor=west] at (5.10,1.42) {$\beta=0.35$};
+
+    \draw[stat221Gray!50,dashed,line width=0.45pt] (3.05,0.75) -- (3.05,3.10);
+    \node[stat221Gray,align=center] at (3.05,3.58) {lower $\beta$ lowers\\the barrier};
+  \end{scope}
+
+  \begin{scope}[shift={(6.0,0.05)}]
+    \node[anchor=west] at (0.1,4.45) {temperature ladder};
+
+    \draw[stat221Gray!55,line width=0.9pt] (2.20,0.78) -- (2.20,3.38);
+
+    \fill[stat221Blue!85!black] (2.20,3.18) circle (2.2pt);
+    \fill[stat221Blue!85!black] (2.20,2.38) circle (2.2pt);
+    \fill[stat221Blue!85!black] (2.20,1.58) circle (2.2pt);
+    \fill[stat221Orange!85!black] (2.20,0.78) circle (2.2pt);
+
+    \node[anchor=west] at (3.00,3.18) {$\beta_1=1$};
+    \node[anchor=west] at (3.00,2.38) {$\beta_2$};
+    \node[anchor=west] at (3.00,1.58) {$\beta_3$};
+    \node[anchor=west] at (3.00,0.78) {$\beta_L$};
+
+    \draw[->,stat221Gray!70,line width=0.6pt]
+      (1.94,3.06) .. controls (1.58,2.94) and (1.58,2.62) .. (1.94,2.50);
+    \draw[->,stat221Gray!70,line width=0.6pt]
+      (2.46,2.50) .. controls (2.80,2.62) and (2.80,2.94) .. (2.46,3.06);
+    \draw[->,stat221Gray!70,line width=0.6pt]
+      (1.94,2.26) .. controls (1.58,2.14) and (1.58,1.82) .. (1.94,1.70);
+    \draw[->,stat221Gray!70,line width=0.6pt]
+      (2.46,1.70) .. controls (2.80,1.82) and (2.80,2.14) .. (2.46,2.26);
+    \draw[->,stat221Gray!70,line width=0.6pt]
+      (1.94,1.46) .. controls (1.58,1.34) and (1.58,1.02) .. (1.94,0.90);
+    \draw[->,stat221Gray!70,line width=0.6pt]
+      (2.46,0.90) .. controls (2.80,1.02) and (2.80,1.34) .. (2.46,1.46);
+    \node[stat221Gray,align=center,font=\scriptsize] at (0.98,2.00) {adjacent\\moves};
+
+    \draw[->,stat221Orange!80!black,line width=0.95pt] (4.55,0.92) to[out=18,in=-25] (4.50,2.96);
+    \node[stat221Blue!80!black,align=left,anchor=west] at (5.10,2.78) {discoveries return\\to $\beta_1=1$};
+    \node[stat221Orange!80!black,align=left,anchor=west] at (5.10,1.28) {hot levels\\cross barriers};
+  \end{scope}
+\end{tikzpicture}

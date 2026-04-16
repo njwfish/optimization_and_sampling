@@ -1,0 +1,77 @@
+\begin{tikzpicture}[>=Stealth]
+  \path[use as bounding box] (-4.1,-2.55) rectangle (5.05,2.85);
+
+  \begin{scope}
+    \draw[stat221Gray!40,line width=0.45pt] (0,0) circle (1.10);
+    \draw[stat221Gray!40,line width=0.45pt] (0,0) circle (1.65);
+    \draw[stat221Gray!40,dashed,line width=0.45pt] (0,0) circle (2.15);
+    \path[fill=stat221Blue!12, even odd rule] (0,0) circle (2.15) (0,0) circle (1.45);
+
+    \coordinate (r0)  at (-2.05,-0.15);
+    \coordinate (r1a) at (-1.55,0.85);
+    \coordinate (r1b) at (-1.52,-1.00);
+    \coordinate (r2a) at (-0.95,1.45);
+    \coordinate (r2b) at (-0.70,0.35);
+    \coordinate (r2c) at (-0.88,-0.42);
+    \coordinate (r2d) at (-0.45,-1.55);
+
+    \coordinate (p0) at (202:1.65);
+    \coordinate (p1a) at (170:1.65);
+    \coordinate (p1b) at (118:1.65);
+    \coordinate (p2a) at (152:1.65);
+    \coordinate (p2b) at (92:1.65);
+    \coordinate (p2c) at (58:1.65);
+    \coordinate (p3a) at (138:1.65);
+    \coordinate (p3b) at (106:1.65);
+    \coordinate (p3c) at (72:1.65);
+    \coordinate (p3d) at (38:1.65);
+
+    \draw[stat221Gray!75,line width=0.9pt] (r0) -- (r1a);
+    \draw[stat221Gray!75,line width=0.9pt] (r0) -- (r1b);
+    \draw[stat221Gray!75,line width=0.9pt] (r1a) -- (r2a);
+    \draw[stat221Gray!75,line width=0.9pt] (r1a) -- (r2b);
+    \draw[stat221Gray!75,line width=0.9pt] (r1b) -- (r2c);
+    \draw[stat221Gray!75,line width=0.9pt] (r1b) -- (r2d);
+
+    \draw[stat221Gray!55,line width=0.85pt] (r2a) -- (p3a);
+    \draw[stat221Gray!55,line width=0.85pt] (r2a) -- (p3b);
+    \draw[stat221Gray!55,line width=0.85pt] (r2b) -- (p2b);
+    \draw[stat221Gray!55,line width=0.85pt] (r2b) -- (p2a);
+    \draw[stat221Gray!55,line width=0.85pt] (r2c) -- (p1a);
+    \draw[stat221Gray!55,line width=0.85pt] (r2c) -- (p1b);
+    \draw[stat221Gray!55,line width=0.85pt] (r2d) -- (p3c);
+    \draw[stat221Gray!55,line width=0.85pt] (r2d) -- (p3d);
+
+    \draw[stat221Gray!45,dashed,line width=0.55pt] (210:1.65) arc[start angle=210,end angle=24,radius=1.65];
+
+    \fill[black] (p0) circle (1.8pt);
+    \fill[stat221Blue] (p1a) circle (2.0pt);
+    \fill[stat221Blue] (p1b) circle (2.0pt);
+    \fill[stat221Green!75!black] (p2a) circle (2.0pt);
+    \fill[stat221Green!75!black] (p2b) circle (2.0pt);
+    \fill[stat221Green!75!black] (p2c) circle (2.0pt);
+    \fill[stat221Purple] (p3a) circle (2.0pt);
+    \fill[stat221Purple] (p3b) circle (2.0pt);
+    \fill[stat221Purple] (p3c) circle (2.0pt);
+    \fill[stat221Purple] (p3d) circle (2.0pt);
+
+    \node[stat221Gray,font=\footnotesize,anchor=west] at (1.95,1.42) {level curves of $U(x)$};
+    \node[stat221Gray,font=\footnotesize,anchor=west] at (1.95,1.04) {doubling expands the tree};
+
+    \matrix[
+      anchor=west,
+      draw=stat221Gray!25,
+      fill=white,
+      rounded corners,
+      inner sep=2.5pt,
+      row sep=0.10cm,
+      column sep=0.16cm,
+      font=\footnotesize,
+    ] at (-3.85,1.72) {
+      \node{\tikz[baseline=-0.5ex]\fill[black] (0,0) circle (1.2pt);}; & \node{$j=0$}; \\
+      \node{\tikz[baseline=-0.5ex]\fill[stat221Blue] (0,0) circle (1.7pt);}; & \node{$j=1$}; \\
+      \node{\tikz[baseline=-0.5ex]\fill[stat221Green!75!black] (0,0) circle (1.7pt);}; & \node{$j=2$}; \\
+      \node{\tikz[baseline=-0.5ex]\fill[stat221Purple] (0,0) circle (1.7pt);}; & \node{$j=3$}; \\
+    };
+  \end{scope}
+\end{tikzpicture}

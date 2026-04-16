@@ -1,0 +1,107 @@
+The next three destinations answer a concrete numerical question: once an algorithm produces a Hessian, covariance, Gram matrix, or local metric, how should we actually compute with it?
+The recurring answer is to factor the matrix, solve systems instead of inverting them, and regularize noisy geometry before trusting it.
+These tools appear here because Newton systems force the issue first, but the same Cholesky factorizations, linear solves, and damping rules will reappear in Laplace proposals, Kalman and EM covariance updates, HMC mass-matrix adaptation, and Gaussian diffusion calculations.
+
+\subsubsection{Structure-preserving positive-definite geometry}
+\label{subsec:geometry-control}
+\label{subsubsec:cholesky-geometry}
+
+Many optimization methods are built from local quadratic objects: Hessians, Gram matrices, covariance surrogates, and preconditioners.
+To use them reliably, we need stable numerical primitives.
+The recurring ones are simple: represent positive definite matrices through Cholesky factors, solve linear systems instead of forming inverses, and damp noisy geometry before trusting it.
+These choices keep the computation aligned with the local shape of the problem.
+
+The first primitive is the Cholesky factorization and the structure-preserving parameterizations it enables.
+For symmetric positive definite matrices, the Cholesky factorization is the basic structure-preserving representation; see \citet[Thm.~4.2.7]{golub_van_loan_2013_matrix_computations} and \citet[Alg.~A.2]{nocedal_wright_2006_numerical}.
+If $K\succ 0$, write $K=LL^\top$ with $L$ lower triangular and positive diagonal.
+This representation keeps positive definiteness explicit and turns matrix calculations into triangular ones.
+It also matches the parameterization ideas from \Cref{subsubsec:strict-constraints}: instead of optimizing or adapting directly over the cone of SPD matrices, one works with unconstrained or lightly constrained entries of a factor.
+In floating-point arithmetic, a matrix that is theoretically positive definite can acquire a tiny negative eigenvalue after noisy estimation, rounding, or an unfortunate update if one stores and manipulates its entries directly.
+By contrast, if one stores a factor and reconstructs the matrix as $LL^\top$, positive definiteness is built into the representation itself.
+
+When a method is built around a covariance, precision, or local metric, writing that object through a factor prevents the computation from drifting outside the positive definite cone.
+Cholesky factors therefore appear naturally in Gaussian objectives, covariance parameterizations, and later in mass-matrix adaptation for HMC.
+The factor is the stable computational object; the SPD matrix is then recovered from it.
+
+\subsubsection{Solves, log-determinants, and Gaussian quadratics}
+\label{subsubsec:solves-logdets}
+
+Once a positive definite matrix has been factored, the next principle is to solve linear systems rather than form explicit inverses.
+If $K=LL^\top$ and $r\in\R^d$, then
+\begin{equation}
+  r^\top K^{-1}r = \norm{L^{-1}r}_2^2,
+  \qquad
+  \log\det K = 2\sum_{i=1}^d \log L_{ii}.
+  \label{eq:cholesky-quadratic-logdet}
+\end{equation}
+The quadratic form is evaluated by two triangular solves, and the log-determinant is read directly from the diagonal of the factor.
+This is exactly the computational pattern that follows from the Cholesky factorization and its associated forward and back substitutions \citep[Alg.~A.2]{nocedal_wright_2006_numerical}.
+This is the stable pattern behind Gaussian log densities, Laplace approximations, and Newton systems with quadratic models.
+
+In practice, ``invert, then multiply'' is almost never the right implementation.
+Explicit inverses amplify conditioning problems and discard the triangular structure we just paid to compute.
+They also answer a more fragile question than the algorithm actually asks.
+The method typically needs $K^{-1}r$, not every entry of $K^{-1}$.
+A solve keeps the same mathematical answer while preserving sparsity, symmetry, and numerical accuracy.
+The same algebra will return whenever an algorithm is driven by local Gaussian geometry.
+
+\subsubsection{Local Gaussian geometry and damping}
+\label{subsubsec:local-gaussian-geometry}
+Once a quadratic approximation is available, the same matrix can often be reused in several ways.
+If a smooth objective or negative log density is approximated near a stationary point $\mu$ by
+\[
+  q(x)
+  \approx
+  q(\mu) + \frac{1}{2}(x-\mu)^\top H(x-\mu),
+  \qquad H\succ 0,
+\]
+then $H$ is simultaneously a local curvature matrix, a local precision matrix, and a candidate preconditioner.
+The associated Gaussian approximation has log density
+\[
+  \log g(x)
+  =
+  \text{const}
+  +
+  \frac{1}{2}\log\det H
+  -
+  \frac{1}{2}(x-\mu)^\top H(x-\mu),
+\]
+so the same Cholesky factor used to solve Newton systems also evaluates the quadratic form and log-determinant stably.
+This is the computational core of a Laplace approximation, but the point is broader than approximation alone.
+
+If $H=LL^\top$, then the rescaled coordinate
+\[
+  z \coloneqq L^\top(x-\mu)
+\]
+turns the local quadratic model into $\frac{1}{2}\norm{z}_2^2$.
+In that coordinate system, one unit of displacement corresponds to one local standard deviation, or equivalently to one unit of quadratic energy.
+In those whitened coordinates, a spherical proposal or unit step is locally matched to the geometry, whereas the same move in the original coordinates would be stretched along shallow directions and compressed along steep ones.
+A local Hessian or covariance estimate can therefore serve as a proposal scale, an initialization scale, or a preconditioner for gradient-based methods as well as an approximation to the target itself.
+The Laplace proposal from importance sampling is one example, and mass-matrix adaptation in HMC is another.
+
+The local Gaussian picture is only a local approximation.
+If the target is strongly skewed, heavy tailed, or multimodal, then the quadratic geometry may still be useful for scaling the method even when it is not globally accurate as a distributional approximation.
+Its adequacy is then checked with the diagnostics natural to the algorithm at hand: log-weight histograms and ESS in importance sampling, or trace plots and mixing diagnostics in MCMC.
+
+\label{subsubsec:damping-preconditioning}
+In practice the local geometry used by an algorithm is usually estimated rather than known exactly.
+Even with a good representation, local geometry estimates are often noisy or badly scaled.
+Newton's method may produce a Hessian that is too ill conditioned to trust directly, and a covariance estimated from a short pilot run can be nearly singular even when the underlying target is well behaved.
+The common response is to alter the geometry in a controlled way rather than pretending the raw estimate is exact.
+Adding a multiple of the identity,
+\[
+  K_\lambda \coloneqq K + \lambda I,
+  \qquad \lambda>0,
+\]
+is the simplest example.
+In optimization language, this is the basic modified-Cholesky or Hessian-damping move; see \citet[Alg.~3.3]{nocedal_wright_2006_numerical}.
+In optimization this appears as ridge regularization or a damped Newton system.
+In covariance estimation it appears as diagonal loading or a covariance floor.
+In shrinkage form one may instead replace $\hat\Sigma$ by a convex combination of $\hat\Sigma$ and a simpler reference metric, often diagonal or isotropic.
+
+These modifications are not ad hoc numerical patches.
+They encode the judgment that very small estimated curvature or variance should not be trusted literally until the data supporting it are stronger.
+The effect is to floor the geometry: steep directions remain steep, but directions supported only by noise are prevented from becoming infinitely sharp or completely flat.
+This is the same idea behind preconditioning in \Cref{subsec:preconditioning}.
+One chooses a metric that makes the important directions comparably scaled, so that a single step size can resolve them all.
+Later, the same perspective explains why mild regularization is useful when EM updates weighted covariances and why HMC warm-up treats mass-matrix adaptation as preconditioning from noisy pilot draws rather than as exact covariance estimation.

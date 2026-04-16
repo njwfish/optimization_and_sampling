@@ -1,0 +1,110 @@
+We focus on gradient descent with a backtracking line search (see \citet[\S9.3]{boyd_vandenberghe_2004_convex}).
+\Cref{alg:gd-backtracking} is the specialization of \cref{alg:generic-descent} with direction $\Delta x^{(k)}=-\nabla f(x^{(k)})$ and step size chosen by \cref{alg:backtracking}.
+The analysis is modular: smoothness implies that \emph{some} step sizes satisfy Armijo (\cref{lem:armijo-sufficient}), which implies backtracking never shrinks ``too much'' (\cref{prop:bt-lower-bound}); strong convexity then links the gradient norm to suboptimality (\cref{cor:sc-links}), yielding a linear rate (\cref{thm:gd-linear}).
+In this subsection we work with unconstrained objectives $f:\R^d\to\R$, so every trial point $x-t\nabla f(x)$ is feasible.
+
+\begin{algorithm}
+  \caption{Gradient descent with backtracking line search}
+  \label{alg:gd-backtracking}
+  \begin{algorithmic}[1]
+    \Require Differentiable $f:\R^d\to\R$, initial point $x^{(0)}$, parameters $\alpha \in (0,1/2)$, $\beta \in (0,1)$, stopping criterion
+    \Ensure Final iterate $x$
+    \State $k \gets 0$
+    \While{stopping criterion not met}
+      \State $g^{(k)} \gets \nabla f(x^{(k)})$
+      \State $\Delta x^{(k)} \gets -g^{(k)}$
+      \State $t^{(k)} \gets$ \Call{BacktrackingLineSearch}{$f, x^{(k)}, \Delta x^{(k)}, \alpha, \beta$} \Comment{\cref{alg:backtracking}}
+      \State $x^{(k+1)} \gets x^{(k)} + t^{(k)}\Delta x^{(k)}$
+      \State $k \gets k + 1$
+    \EndWhile
+    \State \Return $x^{(k)}$
+  \end{algorithmic}
+\end{algorithm}
+
+The update has the form
+\begin{equation}
+  x^{(k+1)} = x^{(k)} - t^{(k)} \nabla f(x^{(k)}),
+  \label{eq:gd-update}
+\end{equation}
+where $t^{(k)}$ is the step size returned by backtracking.
+
+\begin{lemma}[A simple sufficient step size for the Armijo condition]
+\label{lem:armijo-sufficient}
+Assume $f:\R^d\to\R$ is $M$-smooth and take $\alpha \in (0,1/2)$.
+Then for any $x$ and any step size $t \in (0,1/M]$,
+\begin{equation}
+  f(x-t\nabla f(x)) \le f(x) - \alpha t \norm{\nabla f(x)}_2^2.
+  \label{eq:armijo-sufficient}
+\end{equation}
+\end{lemma}
+\begin{proof}
+By the upper bound in \cref{thm:quadratic-bounds} (the ``descent lemma''), with $y=x-t\nabla f(x)$,
+\[
+f(x-tg) \le f(x) + \nabla f(x)^\top(-tg) + \frac{M}{2}\norm{-tg}_2^2
+= f(x) - t\norm{g}_2^2 + \frac{M t^2}{2}\norm{g}_2^2,
+\]
+where $g=\nabla f(x)$.
+If $t \le 1/M$ then $-t + (Mt^2/2) \le -t/2$, so
+\[
+f(x-tg) \le f(x) - \frac{t}{2}\norm{g}_2^2 \le f(x) - \alpha t \norm{g}_2^2,
+\]
+since $\alpha<1/2$.
+\end{proof}
+
+\begin{proposition}[Backtracking returns a step size bounded away from zero]
+\label{prop:bt-lower-bound}
+Assume $f:\R^d\to\R$ is $M$-smooth and backtracking is run with $\alpha \in (0,1/2)$ and $\beta \in (0,1)$.
+Then the returned step size $t$ satisfies
+\begin{equation}
+  t \ge \min\left\{1,\frac{\beta}{M}\right\}.
+  \label{eq:bt-lower-bound}
+\end{equation}
+\end{proposition}
+\begin{proof}
+If backtracking accepts $t=1$, then \eqref{eq:bt-lower-bound} holds.
+Otherwise, at least one shrink occurs, so the final accepted $t$ has the form $t=\beta^j$ with $j\ge 1$ and the previous trial value $t/\beta$ was rejected.
+By \cref{lem:armijo-sufficient}, any $s\le 1/M$ satisfies the Armijo condition, so a rejected step must satisfy $t/\beta > 1/M$.
+Thus $t > \beta/M$.
+Since this case only occurs when $t<1$, we also have $\beta/M < 1$, so $t \ge \min\{1,\beta/M\}$.
+\end{proof}
+
+\begin{theorem}[Linear convergence of GD with backtracking for strongly convex and smooth $f$]
+\label{thm:gd-linear}
+Assume $f:\R^d\to\R$ is twice differentiable and satisfies
+\[
+  m I \preceq \Hess f(x) \preceq M I \qquad \forall x \in \R^d,
+\]
+with $0<m\le M$.
+Let $(x^{(k)})$ be the gradient descent iterates \eqref{eq:gd-update} with backtracking parameters $\alpha \in (0,1/2)$ and $\beta \in (0,1)$, and let $x^\star=\argmin_{x\in\R^d} f(x)$.
+Then
+\begin{equation}
+  f(x^{(k)}) - f(x^\star)
+  \le c^k \bigl(f(x^{(0)}) - f(x^\star)\bigr),
+  \qquad
+  c = 1 - \min\left\{2\alpha m, \frac{2\alpha\beta m}{M}\right\}.
+  \label{eq:gd-linear}
+\end{equation}
+\end{theorem}
+\begin{proof}
+By the Armijo condition with $\Delta x^{(k)}=-\nabla f(x^{(k)})$,
+\[
+f(x^{(k+1)}) \le f(x^{(k)}) - \alpha t^{(k)} \norm{\nabla f(x^{(k)})}_2^2.
+\]
+By \cref{prop:bt-lower-bound}, $t^{(k)} \ge \min\{1,\beta/M\}$.
+By \cref{cor:sc-links}(b), $\norm{\nabla f(x^{(k)})}_2^2 \ge 2m\bigl(f(x^{(k)})-f(x^\star)\bigr)$.
+Combining,
+\[
+f(x^{(k+1)})-f(x^\star)
+\le \left(1 - 2\alpha m \min\left\{1,\frac{\beta}{M}\right\}\right)\bigl(f(x^{(k)})-f(x^\star)\bigr).
+\]
+Since $2\alpha m \min\{1,\beta/M\} = \min\{2\alpha m, 2\alpha\beta m/M\}$, this yields \eqref{eq:gd-linear} by iteration.
+\end{proof}
+
+It is useful to express the rate in terms of the condition number $\kappa=M/m$.
+When $\kappa$ is large (poor conditioning), the contraction factor in \eqref{eq:gd-linear} is approximately
+\[
+c \approx 1 - \frac{2\alpha\beta}{\kappa},
+\]
+so convergence can be slow.
+Geometrically, the level sets are long narrow valleys and vanilla gradient descent tends to ``zig-zag'' (see \citet[\S9.3 and Ex.~9.3.2]{boyd_vandenberghe_2004_convex}).
+This motivates changing the geometry of the update via preconditioning.

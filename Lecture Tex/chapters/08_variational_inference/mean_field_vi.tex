@@ -1,0 +1,333 @@
+\subsection{Mean-field variational inference}
+\label{subsec:mean-field-vi}
+
+\subsubsection{Factorized families and conditional updates}
+
+The ELBO formulation is generic.
+The real modeling decision is the choice of variational family \(\mathcal{Q}\).
+If the family is too expressive, evaluating or optimizing the ELBO can be almost as hard as the original posterior problem.
+If the family is too simple, optimization is cheap but the approximation can be poor.
+Mean-field variational inference makes a deliberately simple choice:
+it assumes the latent coordinates are independent under the approximation, even if they are strongly dependent under the true posterior.
+This is the standard mean-field starting point in variational inference; see \citet[\S2.3]{blei_kucukelbir_mcauliffe_2017_vi_review}.
+To see what this means in a hierarchical model, suppose the observations are \(x_{1:n}\), the shared latent block is \(w\), and the datum-specific latent variables are \(z_{1:n}\).
+Many posterior distributions of interest take the form
+\[
+  p_\theta(w,z_{1:n}\mid x_{1:n})
+  \propto
+  p_\theta(w)\prod_{i=1}^n p_\theta(z_i\mid w)\,p_\theta(x_i\mid z_i,w).
+\]
+Here the global block \(w\) is shared across the whole data set, while each \(z_i\) is local to one observation.
+A basic mean-field approximation replaces this coupled posterior by
+\[
+  q(w,z_{1:n})
+  =
+  q(w)\prod_{i=1}^n q_i(z_i),
+\]
+possibly with a finer factorization inside the global block \(q(w)\).
+This suppresses posterior dependence, but it also isolates the global quantities that pool information from all observations from the local quantities that can be updated one datum at a time.
+To state the coordinate update in a uniform form, we now collect all latent blocks into \(z=(z_1,\dots,z_m)\) and consider the generic factorized family below.
+
+Write the latent variable as \(z=(z_1,\dots,z_m)\) and consider the factorized family
+\begin{equation}
+  q(z)
+  =
+  \prod_{j=1}^m q_j(z_j).
+  \label{eq:mean-field-factorization}
+\end{equation}
+The factorization in \eqref{eq:mean-field-factorization} is strong, but it makes the ELBO amenable to coordinate updates.
+To derive one update, we hold all factors except \(q_j\) fixed and optimize only over the remaining factor.
+That one-coordinate problem is the basis of coordinate-ascent variational inference (CAVI).
+Mean-field VI is often the first approximation one studies because it exposes this coordinatewise logic in the simplest possible setting before one worries about richer families.
+The standard derivation and algorithmic viewpoint appear in \citet[\S2.4]{blei_kucukelbir_mcauliffe_2017_vi_review}.
+
+\subsubsection{Coordinate ascent updates}
+\label{subsubsec:cavi-updates}
+
+Let
+\[
+  q_{-j}(z_{-j})
+  \coloneqq
+  \prod_{k\ne j} q_k(z_k)
+\]
+denote the product of all factors except the $j$th.
+If we hold $q_{-j}$ fixed and optimize only over $q_j$, the ELBO has a simple closed-form maximizer.
+
+\begin{proposition}[Mean-field coordinate update]
+\label{prop:mean-field-update}
+Fix the factors $q_k$ for $k\ne j$.
+Then any maximizer of the ELBO over the remaining factor $q_j$ satisfies
+\begin{equation}
+  q_j^\star(z_j)
+  \propto
+  \exp\!\left(
+    \E_{q_{-j}}\bigl[\log p_\theta(x,z)\bigr]
+  \right),
+  \label{eq:mean-field-coordinate-update}
+\end{equation}
+where the expectation is taken with respect to the current variational law on $z_{-j}$ and the proportionality constant normalizes the right-hand side.
+\end{proposition}
+\begin{proof}
+Starting from \eqref{eq:elbo-definition} and separating the factor $q_j$ from the others,
+\[
+  \mathcal{L}(q;\theta,x)
+  =
+  \int q_j(z_j)\,q_{-j}(z_{-j})
+  \Bigl[\log p_\theta(x,z) - \log q_j(z_j) - \log q_{-j}(z_{-j})\Bigr]
+  \,dz_j\,dz_{-j}.
+\]
+The terms involving only $q_{-j}$ are constant when we optimize over $q_j$, so
+\[
+  \mathcal{L}(q;\theta,x)
+  =
+  \int q_j(z_j)\,m_j(z_j)\,dz_j
+  -
+  \int q_j(z_j)\log q_j(z_j)\,dz_j
+  + C,
+\]
+where
+\[
+  m_j(z_j)
+  \coloneqq
+  \E_{q_{-j}}\bigl[\log p_\theta(x,z)\bigr]
+\]
+and $C$ does not depend on $q_j$.
+Now define
+\[
+  \widetilde q_j(z_j)
+  \propto
+  e^{m_j(z_j)}.
+\]
+Then
+\[
+  \operatorname{KL}\!\bigl(q_j\,\|\,\widetilde q_j\bigr)
+  =
+  \int q_j(z_j)\log q_j(z_j)\,dz_j
+  -
+  \int q_j(z_j)m_j(z_j)\,dz_j
+  +
+  \log \int e^{m_j(u)}\,du.
+\]
+Therefore
+\[
+  \mathcal{L}(q;\theta,x)
+  =
+  -\operatorname{KL}\!\bigl(q_j\,\|\,\widetilde q_j\bigr)
+  + C',
+\]
+for another constant $C'$ independent of $q_j$.
+The ELBO is maximized exactly when this KL divergence is minimized, which occurs at $q_j=\widetilde q_j$.
+This gives \eqref{eq:mean-field-coordinate-update}.%
+\end{proof}
+
+Equation \eqref{eq:mean-field-coordinate-update} is the core formula behind coordinate-ascent variational inference (CAVI).
+One cycles through the factors, replacing each one by the normalized exponential of the expected complete-data log density.
+Each update maximizes the ELBO with respect to one coordinate, so the ELBO cannot decrease from one step to the next.
+This is the generic CAVI update from \citet[\S2.4, eqs.~(17)--(18)]{blei_kucukelbir_mcauliffe_2017_vi_review}.
+In that sense, CAVI is to VI what the E-step/M-step alternation is to EM: each block update solves the current restricted subproblem exactly.
+It is also the deterministic analogue of a Gibbs update:
+\[
+  \text{Gibbs:}\qquad Z_j^{\mathrm{new}} \sim p(z_j\mid z_{-j},x),
+  \qquad
+  \text{CAVI:}\qquad q_j^{\mathrm{new}}(z_j)\propto \exp\!\left(\E_{q_{-j}}[\log p_\theta(x,z)]\right).
+\]
+Gibbs sampling draws one coordinate from the exact conditional, while CAVI replaces that random draw by the factor that maximizes the ELBO given the current law on the remaining coordinates.
+
+\begin{algorithm}[H]
+  \caption{Coordinate-ascent mean-field VI}
+  \label{alg:cavi}
+  \begin{algorithmic}[1]
+    \Require Joint density \(p_\theta(x,z)\), initial factors $q_1^{(0)},\dots,q_m^{(0)}$, tolerance $\varepsilon$
+    \State $t \gets 0$
+    \Repeat
+      \For{$j=1,2,\dots,m$}
+        \State Update
+        \[
+          q_j^{(t+1)}(z_j)
+          \propto
+          \exp\!\left(
+            \E_{q_{-j}^{(t+1,t)}}[\log p_\theta(x,z)]
+          \right),
+        \]
+        where $q_{-j}^{(t+1,t)}$ uses the newest factors available in the current sweep
+      \EndFor
+      \State $t \gets t+1$
+    \Until{the ELBO increase is smaller than $\varepsilon$}
+    \State \Return $q^{(t)}(z)=\prod_{j=1}^m q_j^{(t)}(z_j)$
+  \end{algorithmic}
+\end{algorithm}
+
+The appeal of CAVI is not only monotone improvement of the ELBO but also a closure property in conjugate models.
+Suppose the exact complete conditional of \(z_j\) has exponential-family form
+\[
+  p_\theta(z_j\mid x,z_{-j})
+  \propto
+  h_j(z_j)\exp\!\bigl(\eta_j(x,z_{-j})^\top T_j(z_j)\bigr).
+\]
+Then \eqref{eq:mean-field-coordinate-update} gives
+\[
+  q_j^\star(z_j)
+  \propto
+  h_j(z_j)\exp\!\Bigl(\E_{q_{-j}}\bigl[\eta_j(x,z_{-j})\bigr]^\top T_j(z_j)\Bigr).
+\]
+So the optimal factor stays in the same exponential family; only its natural parameter is replaced by an expectation under the remaining factors.
+This is the basic closure principle behind classical mean-field VI:
+Gaussian conditionals yield Gaussian factors, categorical conditionals yield categorical factors, and Dirichlet conditionals yield Dirichlet factors.
+In conjugate exponential-family models the right-hand side can therefore be evaluated from current sufficient-statistic moments, and each coordinate update reduces to a familiar parameter update rather than a fresh numerical optimization.
+This exponential-family closure is the organizing principle in \citet[\S4.1--4.2]{blei_kucukelbir_mcauliffe_2017_vi_review}.
+That is what makes mean-field VI computationally attractive in models such as mixture models, hidden Markov models, topic models, and linear-Gaussian factor models.
+Once conjugacy disappears, however, those closed-form coordinate updates are no longer available.
+That is the point where one leaves the classical CAVI setting and moves to stochastic-gradient and amortized methods.
+
+\subsubsection{Worked examples: mixture assignments and factor analysis}
+
+Two examples are especially useful here.
+Gaussian mixtures show how CAVI keeps categorical, Gaussian, and Dirichlet factors inside their familiar conjugate families, while Bayesian factor analysis makes the global/local Gaussian structure visible in a form that leads naturally into amortized encoders and VAEs.
+
+\begin{example}[Gaussian mixtures stay inside familiar families]
+\label{ex:mfvi-gmm}
+The same closure principle appears in a conjugate Gaussian mixture model.
+Let \(z_i\in\{1,\dots,K\}\) be the component indicator for \(x_i\in\R^d\), let \(\pi\) be the mixing weights, and let \(\mu_{1:K}\) be the component means.
+Assume the observation covariance is \(I_d\), take the priors
+\[
+  \pi \sim \operatorname{Dirichlet}(\alpha_1,\dots,\alpha_K),
+  \qquad
+  \mu_k \sim \mathcal{N}(0,\Lambda^{-1}),
+\]
+and write the mean-field family as
+\[
+  q(\pi,\mu_{1:K},z_{1:n})
+  =
+  q(\pi)\prod_{k=1}^K q_k(\mu_k)\prod_{i=1}^n q_i(z_i).
+\]
+Then CAVI keeps every factor in its conjugate family:
+\[
+  q_i(z_i)
+  =
+  \operatorname{Categorical}(r_{i1},\dots,r_{iK}),
+  \qquad
+  q_k(\mu_k)
+  =
+  \mathcal{N}(m_k,\Sigma_k),
+  \qquad
+  q(\pi)
+  =
+  \operatorname{Dirichlet}(\widetilde\alpha_1,\dots,\widetilde\alpha_K).
+\]
+The local responsibility update is
+\[
+  r_{ik}
+  \propto
+  \exp\!\left(
+    \E_q[\log \pi_k]
+    -
+    \frac12 \E_q \norm{x_i-\mu_k}^2
+  \right),
+\]
+while the global factors satisfy
+\[
+  \Sigma_k^{-1}
+  =
+  \Lambda + \Bigl(\sum_{i=1}^n r_{ik}\Bigr) I_d,
+  \qquad
+  m_k
+  =
+  \Sigma_k \sum_{i=1}^n r_{ik}x_i,
+\]
+and
+\[
+  \widetilde\alpha_k
+  =
+  \alpha_k + \sum_{i=1}^n r_{ik}.
+\]
+This is the packet's basic message in a standard conjugate model:
+the local \(z_i\)-updates are soft assignments, and the global updates for \(\mu_k\) and \(\pi\) are just Gaussian and Dirichlet parameter updates driven by the current responsibilities.
+\end{example}
+
+\begin{example}[Global loadings and local factors]
+\label{ex:mfvi-bfa}
+A linear-Gaussian factor model makes the global/local structure explicit.
+Let \(x_i\in\R^d\) be observed, let \(z_i\in\R^k\) with \(k<d\) be a latent factor, and let \(W\in\R^{d\times k}\) be a loading matrix.
+Write the \(r\)th row of \(W\) as \(w_r^\top\in\R^k\).
+With fixed scales \(\sigma^2,\tau^2>0\), consider
+\[
+  w_r \sim \mathcal{N}(0,\tau^2 I_k),
+  \qquad
+  z_i \sim \mathcal{N}(0,I_k),
+  \qquad
+  x_i\mid z_i,W \sim \mathcal{N}(Wz_i,\sigma^2 I_d).
+ \]
+Then
+\[
+  p_\theta(W,z_{1:n}\mid x_{1:n})
+  \propto
+  \prod_{r=1}^d p_\theta(w_r)
+  \prod_{i=1}^n p_\theta(z_i)\,p_\theta(x_i\mid z_i,W),
+\]
+where \(\theta=(\sigma^2,\tau^2)\) collects the fixed hyperparameters.
+A mean-field approximation that respects the global/local split is
+\[
+  q(W,z_{1:n})
+  =
+  \prod_{r=1}^d q_r(w_r)\prod_{i=1}^n q_i(z_i).
+\]
+Because both the prior and the likelihood are Gaussian, the closure principle above implies that every optimal factor is Gaussian as well.
+In fact one obtains
+\[
+  q_i(z_i)
+  =
+  \mathcal{N}(m_i,S),
+  \qquad
+  q_r(w_r)
+  =
+  \mathcal{N}(\mu_r,\Sigma),
+\]
+with shared covariance matrices
+\[
+  S^{-1}
+  =
+  I_k + \sigma^{-2}\E_q[W^\top W],
+  \qquad
+  \Sigma^{-1}
+  =
+  \tau^{-2}I_k + \sigma^{-2}\sum_{i=1}^n \E_q[z_i z_i^\top],
+\]
+and means
+\[
+  m_i
+  =
+  \sigma^{-2}S\,\E_q[W]^\top x_i,
+  \qquad
+  \mu_r
+  =
+  \sigma^{-2}\Sigma\sum_{i=1}^n x_{ir}\,\E_q[z_i].
+\]
+The required second moments are
+\[
+  \E_q[W^\top W]
+  =
+  \sum_{r=1}^d (\Sigma + \mu_r\mu_r^\top),
+  \qquad
+  \E_q[z_i z_i^\top]
+  =
+  S + m_i m_i^\top.
+\]
+This example makes both kinds of mean-field update visible.
+Each local factor \(q_i(z_i)\) uses only the datum \(x_i\) together with the current global moments of \(W\).
+Each global factor \(q_r(w_r)\) pools information from all observations through the latent second moments \(\E_q[z_i z_i^\top]\).
+If \(W\) were held fixed, the local update would reduce to the exact Gaussian posterior from classical factor analysis; the Bayesian version adds one more layer of uncertainty by learning a posterior distribution over the shared loadings themselves.
+\end{example}
+
+\subsubsection{Strengths and limitations of mean-field}
+\label{subsubsec:mean-field-strengths-limitations}
+
+Mean-field VI is often remarkably effective when the posterior is roughly unimodal and the most important uncertainty is marginal rather than strongly correlated.
+Its main weakness is also clear from \eqref{eq:mean-field-factorization}: it cannot represent posterior dependence.
+If two coordinates are coupled under the posterior, the factorized approximation must absorb that dependence indirectly by inflating or shrinking the one-dimensional factors.
+This is one reason mean-field approximations often understate uncertainty.
+
+The other major limitation is computational scaling with the data set.
+In models with one local latent variable per observation, CAVI introduces one local variational factor per observation as well.
+That is manageable for moderate data sets and conjugate models, but it becomes cumbersome when $n$ is very large or when the coordinate updates no longer have closed form.
+This is exactly the setting that motivates amortized and stochastic variational inference.
+From this point onward the ELBO and the model \(p_\theta(x,z)\) stay in place, but the optimization regime changes: instead of approximating the posterior for a fixed \(\theta\), we allow the model and the inference rule to be learned together from data.

@@ -1,0 +1,39 @@
+\begin{tikzpicture}[>=Stealth]
+  \begin{scope}[shift={(0,0)}]
+    \node[font=\footnotesize] at (0,3.25) {gradient flow};
+    \path[fill=stat221Blue!16, even odd rule] (0,0) ellipse (2.35 and 1.55) (0,0) ellipse (1.25 and 0.80);
+    \draw[stat221Gray!45,line width=0.5pt] (0,0) ellipse (0.70 and 0.45);
+    \draw[stat221Gray!45,line width=0.5pt] (0,0) ellipse (1.25 and 0.80);
+    \draw[stat221Gray!45,line width=0.5pt] (0,0) ellipse (1.80 and 1.20);
+    \draw[stat221Gray!45,line width=0.5pt] (0,0) ellipse (2.35 and 1.55);
+    \fill[stat221Red] (0,0) circle (1.2pt);
+    \node[stat221Red!75!black,font=\footnotesize,anchor=west] at (0.15,0.10) {mode};
+    \node[stat221Blue!70!black,font=\footnotesize,anchor=west] at (1.55,1.45) {typical set};
+    \draw[->,stat221Red!80!black,line width=0.7pt] (2.10,0.00) -- (1.05,0.00);
+    \draw[->,stat221Red!80!black,line width=0.7pt] (1.50,1.00) -- (0.75,0.50);
+    \draw[->,stat221Red!80!black,line width=0.7pt] (0.00,1.45) -- (0.00,0.75);
+    \draw[->,stat221Red!80!black,line width=0.7pt] (-1.50,1.00) -- (-0.75,0.50);
+    \draw[->,stat221Red!80!black,line width=0.7pt] (-2.10,0.00) -- (-1.05,0.00);
+    \draw[->,stat221Red!80!black,line width=0.7pt] (-1.50,-1.00) -- (-0.75,-0.50);
+    \draw[->,stat221Red!80!black,line width=0.7pt] (0.00,-1.45) -- (0.00,-0.75);
+    \draw[->,stat221Red!80!black,line width=0.7pt] (1.50,-1.00) -- (0.75,-0.50);
+    \node[stat221Red!80!black,font=\footnotesize,anchor=west] at (-2.55,-2.15) {$-\nabla U(x)$ points inward};
+  \end{scope}
+
+  \begin{scope}[shift={(8.2,0)}]
+    \node[font=\footnotesize] at (0,3.25) {Hamiltonian flow};
+    \path[fill=stat221Blue!16, even odd rule] (0,0) ellipse (2.35 and 1.55) (0,0) ellipse (1.25 and 0.80);
+    \draw[stat221Gray!45,line width=0.5pt] (0,0) ellipse (0.70 and 0.45);
+    \draw[stat221Gray!45,line width=0.5pt] (0,0) ellipse (1.25 and 0.80);
+    \draw[stat221Gray!45,line width=0.5pt] (0,0) ellipse (1.80 and 1.20);
+    \draw[stat221Gray!45,line width=0.5pt] (0,0) ellipse (2.35 and 1.55);
+    \draw[stat221Green!70!black,line width=1.0pt,->]
+      (-2.10,-0.25)
+      .. controls (-1.65,-1.15) and (-0.45,-1.55) .. (0.65,-1.35)
+      .. controls (1.70,-1.10) and (2.25,-0.20) .. (1.90,0.85)
+      .. controls (1.55,1.55) and (0.50,1.90) .. (-0.65,1.70)
+      .. controls (-1.65,1.45) and (-2.15,0.55) .. (-1.85,-0.45);
+    \node[stat221Green!60!black,font=\footnotesize,anchor=west] at (-2.45,-2.15) {long coherent motion through the annulus};
+    \node[stat221Green!60!black,font=\footnotesize,anchor=west] at (0.95,1.95) {$M^{-1}p$ is approximately tangent};
+  \end{scope}
+\end{tikzpicture}

@@ -1,0 +1,366 @@
+\subsection{Stochastic and amortized variational inference}
+\label{subsec:amortized-vi}
+
+\subsubsection{From mean-field factors to shared encoders}
+
+Mean-field VI introduces local variational objects for each observation.
+If $x_1,\dots,x_n$ are observations with corresponding latent variables $z_1,\dots,z_n$, a classical approximation might introduce one local parameter $\lambda_i$ for each $x_i$.
+That can be effective, but it scales poorly:
+every new observation comes with a fresh inference subproblem.
+In the Bayesian factor-analysis example from \Cref{ex:mfvi-bfa}, this means storing one Gaussian factor \(q_i(z_i)\) for every datum together with a global factor for the loading matrix \(W\).
+
+Amortized variational inference replaces those per-datum free parameters by a shared map.
+Instead of optimizing \(\lambda_i\) separately for every \(x_i\), we learn parameters \(\phi\) and set
+\[
+  q_\phi(z_i\mid x_i)
+\]
+directly as a function of the observation.
+In factor analysis, a natural amortized choice is a Gaussian encoder
+\[
+  q_\phi(z_i\mid x_i)
+  =
+  \mathcal{N}\!\bigl(\mu_\phi(x_i),\Sigma_\phi(x_i)\bigr),
+\]
+which tries to predict the posterior summaries that CAVI would otherwise compute separately for each \(i\).
+If the model still contains a global latent block such as \(W\), we keep a separate factor \(q_\xi(W)\) and amortize only the local factors:
+\[
+  q_{\xi,\phi}(W,z_{1:n})
+  =
+  q_\xi(W)\prod_{i=1}^n q_\phi(z_i\mid x_i).
+\]
+This is the meaning of \emph{amortization}: we pay the cost of learning an inference rule during training and then reuse that rule across data points.
+When there is no separate global latent block, and the generative model has parameters \(\theta\) that factorize across observations as
+\[
+  p_\theta(x_{1:n},z_{1:n})
+  =
+  \prod_{i=1}^n p_\theta(x_i,z_i),
+\]
+then the training objective is the summed ELBO
+\begin{equation}
+  \mathcal{J}(\theta,\phi)
+  \coloneqq
+  \sum_{i=1}^n \mathcal{L}_i(\theta,\phi),
+  \qquad
+  \mathcal{L}_i(\theta,\phi)
+  \coloneqq
+  \E_{q_\phi(z_i\mid x_i)}
+  \bigl[\log p_\theta(x_i,z_i) - \log q_\phi(z_i\mid x_i)\bigr].
+  \label{eq:amortized-elbo}
+\end{equation}
+Stochastic-gradient VI is the optimization strategy that makes this practical: we estimate gradients of \eqref{eq:amortized-elbo} with Monte Carlo samples and minibatches rather than with closed-form coordinate updates.
+\Cref{fig:vi-amortization} illustrates the difference.
+This encoder--decoder organization is the modern VAE setup \citep[\S2.3]{kingma_welling_2014_aevb}.
+
+\begin{figure}[H]
+  \centering
+  \input{figures/main_notes/variational_inference/fig_vi_amortization}
+  \caption{Classical mean-field VI uses one set of local variational parameters per observation.
+  Amortized VI replaces those free parameters by a shared encoder $q_\phi(z\mid x)$, so inference for a new datum becomes a forward pass through the learned map.}
+  \label{fig:vi-amortization}
+\end{figure}
+
+Dividing \eqref{eq:amortized-elbo} by \(n\) gives the same optimizer, and the corresponding population form replaces the empirical sum by
+\[
+  \E_{p_{\mathrm{data}}(x)}\!\bigl[\mathcal{L}(q_\phi(\cdot\mid x);x)\bigr].
+\]
+We keep the finite-sample form here because the main issue in this chapter is stochastic optimization over a given data set.
+
+For the Bayesian factor-analysis model, the amortized family \(q_{\xi,\phi}(W,z_{1:n})\) leads to
+\[
+  \mathcal{J}(\theta,\xi,\phi)
+  =
+  \E_{q_{\xi,\phi}}
+  \left[
+    \log p_\theta(W) - \log q_\xi(W)
+    +
+    \sum_{i=1}^n
+    \bigl(
+      \log p_\theta(z_i)
+      +
+      \log p_\theta(x_i\mid z_i,W)
+      -
+      \log q_\phi(z_i\mid x_i)
+    \bigr)
+  \right].
+\]
+With Gaussian priors and Gaussian observation noise, this simplifies to
+\begin{equation}
+  \mathcal{J}(\theta,\xi,\phi)
+  =
+  C
+  -
+  \operatorname{KL}\!\bigl(q_\xi(W)\,\|\,p_\theta(W)\bigr)
+  -
+  \sum_{i=1}^n
+  \operatorname{KL}\!\bigl(q_\phi(z_i\mid x_i)\,\|\,p_\theta(z_i)\bigr)
+  -
+  \frac{1}{2\sigma^2}
+  \sum_{i=1}^n
+  \E_{q_{\xi,\phi}}\norm{x_i-Wz_i}^2,
+  \label{eq:amortized-factor-analysis-elbo}
+\end{equation}
+where \(C\) does not depend on \(\xi\) or \(\phi\).
+The Gaussian encoder keeps the local posterior approximation in the same family as the mean-field example, but now \(\mu_\phi(x)\) and \(\Sigma_\phi(x)\) are shared functions rather than \(n\) separate free parameters.
+Up to the same additive constant, a minibatch \(B\subseteq\{1,\dots,n\}\) gives the stochastic objective
+\begin{equation}
+  \hat{\mathcal{J}}_B(\theta,\xi,\phi)
+  =
+  -\operatorname{KL}\!\bigl(q_\xi(W)\,\|\,p_\theta(W)\bigr)
+  +
+  \frac{n}{|B|}
+  \sum_{i\in B} \ell_i(\theta,\xi,\phi),
+  \label{eq:amortized-factor-analysis-minibatch}
+\end{equation}
+where
+\[
+  \ell_i(\theta,\xi,\phi)
+  \coloneqq
+  \E_{q_\xi(W)q_\phi(z_i\mid x_i)}\!\bigl[\log p_\theta(x_i\mid z_i,W)\bigr]
+  -
+  \operatorname{KL}\!\bigl(q_\phi(z_i\mid x_i)\,\|\,p_\theta(z_i)\bigr).
+\]
+So the global term appears once, while the local reconstruction and KL terms are the ones scaled by \(n/|B|\).
+This is the minibatch consequence that makes the factor-analysis example compatible with stochastic-gradient training.
+
+This same example also explains the move from linear latent-variable models to variational autoencoders.
+If the loading matrix is treated as an ordinary model parameter rather than a latent variable, the decoder is simply the linear map \(z\mapsto Wz\).
+A variational autoencoder keeps the Gaussian latent prior and Gaussian encoder but replaces that linear mean map by a nonlinear decoder \(c_\theta:\R^k\to\R^d\), typically a neural network, and learns \(\theta\) jointly with \(\phi\):
+\[
+  p_\theta(x\mid z)
+  =
+  \mathcal{N}\!\bigl(c_\theta(z),\sigma^2 I_d\bigr),
+  \qquad
+  q_\phi(z\mid x)
+  =
+  \mathcal{N}\!\bigl(\mu_\phi(x),\Sigma_\phi(x)\bigr).
+\]
+For one datum the ELBO then becomes
+\[
+  \mathcal{L}_i(\theta,\phi)
+  =
+  C
+  -
+  \frac{1}{2\sigma^2}
+  \E_{q_\phi(z_i\mid x_i)}\norm{x_i-c_\theta(z_i)}^2
+  -
+  \operatorname{KL}\!\bigl(q_\phi(z_i\mid x_i)\,\|\,p_\theta(z_i)\bigr).
+\]
+So the conceptual move from factor analysis to a VAE is small:
+the latent variable \(z\) stays in place, the encoder stays Gaussian, and only the linear decoder \(Wz\) is replaced by a flexible nonlinear map \citep[\S2.3]{kingma_welling_2014_aevb}.
+What changes analytically is that the linear-Gaussian closed forms disappear twice.
+First, the reconstruction expectation is no longer available in closed form once \(Wz\) is replaced by \(c_\theta(z)\).
+Second, writing the ELBO gradient formally still leaves an intractable expectation under \(q_\phi(z_i\mid x_i)\).
+That is why the pathwise reparameterization step below is not a cosmetic trick.
+It is the mechanism that turns this nonlinear latent-variable model back into a trainable stochastic optimization problem.
+
+\subsubsection{Reparameterization}
+\label{subsubsec:reparameterization-trick}
+
+For continuous latent variables, the Gaussian encoder from the factor-analysis example already has the right form for the reparameterization trick.
+The cleanest route is to rewrite the sampled latent variable as a differentiable transformation of parameter-free noise.
+It converts the gradient of an expectation under \(q_\phi\) into an ordinary pathwise derivative through a fixed source of noise, which is the main computational idea behind stochastic variational autoencoders \citep[\S2.3]{kingma_welling_2014_aevb} and stochastic backpropagation \citep[\S3]{rezende_mohamed_wierstra_2014_stochastic_backpropagation}.
+Suppose we can sample from the variational family by drawing noise $\varepsilon$ from a fixed base distribution and applying a differentiable transformation,
+\begin{equation}
+  z = T_\phi(x,\varepsilon),
+  \qquad
+  \varepsilon \sim s(\varepsilon),
+  \label{eq:reparameterization-map}
+\end{equation}
+where the law of $T_\phi(x,\varepsilon)$ is exactly $q_\phi(z\mid x)$.
+Then the ELBO term for one observation can be rewritten as
+\begin{equation}
+  \mathcal{L}_i(\theta,\phi)
+  =
+  \E_{\varepsilon\sim s}
+  \Bigl[
+    \log p_\theta\bigl(x_i,T_\phi(x_i,\varepsilon)\bigr)
+    -
+    \log q_\phi\bigl(T_\phi(x_i,\varepsilon)\mid x_i\bigr)
+  \Bigr].
+  \label{eq:reparameterized-elbo}
+\end{equation}
+Now the randomness is independent of the parameters, so gradients with respect to $\theta$ and $\phi$ can be pushed through the sampled latent variable by ordinary backpropagation.
+The point is structural: once the latent sample is written as a deterministic function of \((x,\varepsilon)\), the ELBO becomes an expectation over a parameter-free noise source.
+
+The standard example is a Gaussian encoder:
+\begin{equation}
+  q_\phi(z\mid x)
+  =
+  \mathcal{N}\!\bigl(\mu_\phi(x),\Sigma_\phi(x)\bigr),
+  \qquad
+  \Sigma_\phi(x)
+  =
+  L_\phi(x)L_\phi(x)^\top,
+  \qquad
+  z
+  =
+  \mu_\phi(x) + L_\phi(x)\varepsilon,
+  \qquad
+  \varepsilon\sim\mathcal{N}(0,I).
+  \label{eq:gaussian-reparameterization}
+\end{equation}
+The encoder outputs the mean and a covariance factor, and one latent draw is obtained by transforming standard Gaussian noise.
+A diagonal covariance is the common practical specialization in VAEs, but the same pathwise idea applies more generally.
+Other common reparameterizable constructions fit the same template: any location-scale family, inverse-CDF transforms when the quantile map is tractable, and richer autoregressive or log-normal style transformations built from differentiable maps of base noise.
+This is the basic mechanism behind variational autoencoders.
+The encoder produces an approximate posterior, the decoder specifies $p_\theta(x\mid z)$, and the reparameterized ELBO lets us train both with ordinary stochastic gradients.
+
+\begin{algorithm}[H]
+  \caption{Stochastic amortized VI with reparameterization}
+  \label{alg:amortized-vi}
+  \begin{algorithmic}[1]
+    \Require Data $x_{1:n}$, generative model $p_\theta(x,z)$, encoder $q_\phi(z\mid x)$ with reparameterization map $T_\phi$, step sizes $\eta_t$
+    \For{$t=0,1,2,\dots$}
+      \State Sample a minibatch $B\subseteq\{1,\dots,n\}$
+      \For{each $i\in B$}
+        \State Draw $\varepsilon_i \sim s(\varepsilon)$ and set $z_i \gets T_\phi(x_i,\varepsilon_i)$
+      \EndFor
+      \State Form the stochastic ELBO estimate
+      \[
+        \hat{\mathcal{J}}_B(\theta,\phi)
+        =
+        \frac{n}{|B|}
+        \sum_{i\in B}
+        \Bigl[
+          \log p_\theta(x_i,z_i)
+          -
+          \log q_\phi(z_i\mid x_i)
+        \Bigr]
+      \]
+      \State Update $(\theta,\phi)$ by a stochastic-gradient step using $\nabla_{\theta,\phi}\hat{\mathcal{J}}_B$
+    \EndFor
+  \end{algorithmic}
+\end{algorithm}
+
+\subsubsection{Minibatch ELBO optimization}
+\label{subsubsec:amortized-stochastic-gradients}
+
+The summed objective \eqref{eq:amortized-elbo} is usually optimized with minibatch stochastic gradient ascent.
+If $B\subseteq\{1,\dots,n\}$ is a minibatch, the unbiased scaled objective
+\begin{equation}
+  \hat{\mathcal{J}}_B(\theta,\phi)
+  \coloneqq
+  \frac{n}{|B|}
+  \sum_{i\in B}
+  \hat{\mathcal{L}}_i(\theta,\phi)
+  \label{eq:minibatch-elbo}
+\end{equation}
+approximates \eqref{eq:amortized-elbo}, where each term $\hat{\mathcal{L}}_i$ is itself estimated by Monte Carlo.
+This is the minibatch VAE training pattern from \citet[\S2.3]{kingma_welling_2014_aevb}.
+With $S$ samples $z_i^{(s)}\sim q_\phi(\cdot\mid x_i)$,
+\begin{equation}
+  \hat{\mathcal{L}}_i(\theta,\phi)
+  =
+  \frac{1}{S}
+  \sum_{s=1}^S
+  \Bigl[
+    \log p_\theta(x_i,z_i^{(s)})
+    -
+    \log q_\phi(z_i^{(s)}\mid x_i)
+  \Bigr].
+  \label{eq:mc-elbo}
+\end{equation}
+In the factor-analysis objective \eqref{eq:amortized-factor-analysis-elbo}, the same pattern appears with one additional global term:
+\[
+  -\operatorname{KL}\!\bigl(q_\xi(W)\,\|\,p_\theta(W)\bigr).
+\]
+This term stays outside the scaled minibatch sum, exactly as in \eqref{eq:amortized-factor-analysis-minibatch}.
+In practice these evaluations inherit the numerical issues from \Cref{subsec:stable-evaluation,subsec:geometry-control}:
+the ELBO is accumulated on the log scale, transformed latent variables require the Jacobian bookkeeping from \Cref{subsubsec:transformed-densities}, and full-covariance Gaussian families are usually parameterized through the Cholesky constructions from \Cref{subsubsec:cholesky-geometry}.
+This is where the variational story reconnects to the optimization part of the course: once the ELBO is estimated on minibatches, its training dynamics are governed by the same stochastic-gradient considerations that motivated momentum and adaptive methods earlier.
+
+\subsubsection{Score-function gradients}
+
+When reparameterization is unavailable, one can still differentiate expectations under \(q_\phi\) by a score-function, or REINFORCE, identity.
+The correct formula must account for any explicit \(\phi\)-dependence in the integrand as well.
+
+\begin{proposition}[Score-function differentiation identity]
+\label{prop:score-function-gradient}
+Let \(q_\phi\) be a differentiable density on a support that does not depend on \(\phi\).
+Let \(f_\phi\) be an integrable function such that differentiation can be passed under the integral sign in
+\[
+  \int f_\phi(z)\,q_\phi(z)\,dz.
+\]
+Then
+\begin{equation}
+  \nabla_\phi \E_{q_\phi}[f_\phi(Z)]
+  =
+  \E_{q_\phi}\!\bigl[\nabla_\phi f_\phi(Z)\bigr]
+  +
+  \E_{q_\phi}\!\bigl[f_\phi(Z)\,\nabla_\phi \log q_\phi(Z)\bigr].
+  \label{eq:score-function-gradient}
+\end{equation}
+If \(f_\phi=f\) does not depend on \(\phi\), this reduces to
+\[
+  \nabla_\phi \E_{q_\phi}[f(Z)]
+  =
+  \E_{q_\phi}\!\bigl[f(Z)\,\nabla_\phi \log q_\phi(Z)\bigr].
+\]
+\end{proposition}
+\begin{proof}
+Differentiate under the integral sign:
+\[
+  \nabla_\phi \E_{q_\phi}[f_\phi(Z)]
+  =
+  \nabla_\phi \int f_\phi(z)\,q_\phi(z)\,dz
+  =
+  \int \nabla_\phi f_\phi(z)\,q_\phi(z)\,dz
+  +
+  \int f_\phi(z)\,\nabla_\phi q_\phi(z)\,dz.
+\]
+Using $\nabla_\phi q_\phi(z)=q_\phi(z)\nabla_\phi \log q_\phi(z)$ gives
+\[
+  \nabla_\phi \E_{q_\phi}[f_\phi(Z)]
+  =
+  \E_{q_\phi}\!\bigl[\nabla_\phi f_\phi(Z)\bigr]
+  +
+  \int f_\phi(z)\,q_\phi(z)\,\nabla_\phi \log q_\phi(z)\,dz
+  =
+  \E_{q_\phi}\!\bigl[\nabla_\phi f_\phi(Z)\bigr]
+  +
+  \E_{q_\phi}\!\bigl[f_\phi(Z)\,\nabla_\phi \log q_\phi(Z)\bigr].
+\]
+This is \eqref{eq:score-function-gradient}.%
+\end{proof}
+
+Applied to one-datum ELBO term
+\[
+  \mathcal{L}_i(\theta,\phi)
+  =
+  \E_{q_\phi(z_i\mid x_i)}
+  \Bigl[
+    \log p_\theta(x_i,z_i)-\log q_\phi(z_i\mid x_i)
+  \Bigr],
+\]
+we take
+\[
+  f_\phi(z_i)
+  =
+  \log p_\theta(x_i,z_i)-\log q_\phi(z_i\mid x_i).
+\]
+Then \(\nabla_\phi f_\phi(z_i)=-\nabla_\phi\log q_\phi(z_i\mid x_i)\), and
+\[
+  \E_{q_\phi}\!\bigl[\nabla_\phi\log q_\phi(Z\mid x_i)\bigr]
+  =
+  \nabla_\phi \int q_\phi(z\mid x_i)\,dz
+  =
+  0.
+\]
+So \eqref{eq:score-function-gradient} yields the usual score-function ELBO gradient
+\[
+  \nabla_\phi \mathcal{L}_i(\theta,\phi)
+  =
+  \E_{q_\phi(z_i\mid x_i)}
+  \Bigl[
+    \bigl(\log p_\theta(x_i,z_i)-\log q_\phi(z_i\mid x_i)\bigr)
+    \nabla_\phi \log q_\phi(z_i\mid x_i)
+  \Bigr].
+\]
+This estimator is very general, but it is often noisy in practice because the scalar weight multiplying the score can vary substantially across samples.
+For that reason, the reparameterization path above is the default route whenever the latent variables are continuous, and score-function estimators are best viewed as the fallback that keeps the framework applicable more broadly.
+
+Compared with classical mean-field VI, amortization replaces per-datum coordinate optimization by a single shared inference rule.
+That rule is approximate, but it scales to large data sets, supports minibatch training, and makes inference for a new datum a single encoder evaluation.
+The gain in scalability comes with two familiar risks.
+Even when the variational family is expressive enough for each datum separately, a shared encoder can still miss the best local approximation and leave an amortization gap.
+If the decoder is strong enough to explain \(x\) without using \(z\) very much, training can drift toward posterior collapse \citep[\S\S3--4]{he_spokoyny_neubig_bergkirkpatrick_2019_lagging_inference}.

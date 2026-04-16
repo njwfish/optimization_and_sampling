@@ -1,0 +1,23 @@
+\begin{tikzpicture}
+  \begin{axis}[
+    width=0.9\linewidth,
+    height=5.2cm,
+    xmin=0, xmax=40,
+    ymin=0, ymax=1.2,
+    axis lines=left,
+    ticks=none,
+    xlabel={iteration $t$},
+    ylabel={$f(\theta^{(t)})-f(\theta^\star)$},
+    clip=false,
+  ]
+    % A stylized "noisy" objective gap curve + a smoothed (averaged) trend.
+    \addplot[stat221Gray!55,thick,domain=0:40,samples=250]
+      {0.08 + exp(-0.10*x) + 0.06*sin(18*x) + 0.02*sin(70*x)};
+    \addplot[stat221Blue,very thick,domain=0:40,samples=250]
+      {0.08 + exp(-0.10*x)};
+
+    \node[stat221Gray!70,anchor=west] at (axis cs:22,0.58) {raw iterates};
+    \node[stat221Blue,anchor=west] at (axis cs:22,0.33) {averaged / smoothed};
+  \end{axis}
+\end{tikzpicture}
+

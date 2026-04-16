@@ -1,0 +1,16 @@
+\section{Optimization}
+\label{sec:optimization}
+
+Optimization starts from a simple task: given an objective \(f:\R^d\to\R\), choose \(x\) so that \(f(x)\) is small.
+The first questions are local.
+If we stand at a point \(x\), which direction decreases \(f\), how far should we move, and what extra information is carried by curvature?
+This unit develops the gradients, Hessians, curvature bounds, and step-size rules that answer those questions, then extends the same ideas to noisy gradients, structured linear algebra, and feasibility constraints.
+Later the same local information will reappear in sampling, augmentation, and diffusion.
+
+\input{chapters/01_optimization/local_geometry}
+\input{chapters/01_optimization/descent_and_line_search}
+\input{chapters/01_optimization/conditioning_and_preconditioning}
+\input{chapters/01_optimization/newton_method}
+\input{chapters/05_stable_computation_geometry/geometry_control}
+\input{chapters/02_stochastic_constrained_optimization/conjugate_gradient}
+\input{chapters/02_stochastic_constrained_optimization/main}

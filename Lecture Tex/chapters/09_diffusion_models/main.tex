@@ -1,0 +1,13 @@
+\section{Diffusion models}
+\label{sec:diffusion-models}
+
+Diffusion models are a way to sample from a target law \(p_0\) by starting from a reference law \(p_1\) that is easy to sample.
+The abstract setup has two ingredients: a joint law for the endpoint pair \((X_0,X_1)\), with marginals \(p_0\) and \(p_1\), and a bridge that fills in the intermediate states.
+We first set up that bridge abstractly and identify the reverse kernels needed for sampling.
+We then specialize to Euclidean models, where the relevant reverse-time quantities can be learned by regression.
+We then use the course sampling toolkit to build faster, guided, and diverse diffusion samplers within the same bridge notation.
+The discrete-time ELBO appears as a grid-level rewriting of the same construction rather than as a separate starting point.
+
+\input{chapters/09_diffusion_models/bridges_and_dynamics}
+\input{chapters/09_diffusion_models/regression_and_algorithms}
+\input{chapters/09_diffusion_models/sampling_viewpoints_and_corrections}

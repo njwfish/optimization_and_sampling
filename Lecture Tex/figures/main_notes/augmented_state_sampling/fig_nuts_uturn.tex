@@ -1,0 +1,44 @@
+\begin{tikzpicture}[>=Stealth]
+  \path[use as bounding box] (-2.9,-2.55) rectangle (10.6,3.25);
+
+  \begin{scope}[shift={(0,0)}]
+    \node[font=\footnotesize] at (0,3.05) {still moving away};
+    \draw[stat221Gray!50,line width=0.5pt] (0,0) ellipse (2.2 and 1.45);
+    \draw[stat221Gray!35,dashed,line width=0.4pt] (0,0) ellipse (1.4 and 0.9);
+    \coordinate (s1) at (-0.30,-1.43);
+    \coordinate (c1) at (1.45,0.72);
+    \fill[stat221Blue] (s1) circle (1.2pt);
+    \fill[stat221Blue] (c1) circle (1.2pt);
+    \draw[stat221Green!70!black,line width=1.0pt,->]
+      (s1)
+      .. controls (0.30,-1.25) and (1.10,-0.15) .. (c1);
+    \draw[->,stat221Blue!80!black,line width=0.8pt] (s1) -- (c1);
+    \draw[->,stat221Red!75!black,line width=0.9pt] (c1) -- ++(0.75,0.30);
+    \node[stat221Gray!70,font=\footnotesize,anchor=east] at ($(s1)+(-0.06,-0.02)$) {$x_0$};
+    \node[stat221Gray!70,font=\footnotesize,anchor=west] at ($(c1)+(0.08,0.02)$) {$x_t$};
+    \node[stat221Blue!80!black,font=\footnotesize,anchor=west] at (0.30,-0.20) {$\Delta x$};
+    \node[stat221Red!75!black,font=\footnotesize,anchor=west] at (2.15,1.05) {$M^{-1}p_t$};
+    \node[font=\footnotesize] at (0,-2.15) {$\ip{\Delta x}{M^{-1}p_t} > 0$};
+  \end{scope}
+
+  \begin{scope}[shift={(7.8,0)}]
+    \node[font=\footnotesize] at (0,3.05) {beginning to turn back};
+    \draw[stat221Gray!50,line width=0.5pt] (0,0) ellipse (2.2 and 1.45);
+    \draw[stat221Gray!35,dashed,line width=0.4pt] (0,0) ellipse (1.4 and 0.9);
+    \coordinate (s2) at (-0.30,-1.43);
+    \coordinate (c2) at (1.70,1.00);
+    \fill[stat221Blue] (s2) circle (1.2pt);
+    \fill[stat221Blue] (c2) circle (1.2pt);
+    \draw[stat221Green!70!black,line width=1.0pt,->]
+      (s2)
+      .. controls (0.35,-1.20) and (1.85,-0.25) .. (2.05,0.65)
+      .. controls (2.15,1.20) and (1.95,1.55) .. (c2);
+    \draw[->,stat221Blue!80!black,line width=0.8pt] (s2) -- (c2);
+    \draw[->,stat221Red!75!black,line width=0.9pt] (c2) -- ++(-0.85,0.10);
+    \node[stat221Gray!70,font=\footnotesize,anchor=east] at ($(s2)+(-0.06,-0.02)$) {$x_0$};
+    \node[stat221Gray!70,font=\footnotesize,anchor=west] at ($(c2)+(0.08,0.02)$) {$x_t$};
+    \node[stat221Blue!80!black,font=\footnotesize,anchor=west] at (0.55,-0.10) {$\Delta x$};
+    \node[stat221Red!75!black,font=\footnotesize,anchor=east] at (0.95,1.35) {$M^{-1}p_t$};
+    \node[font=\footnotesize] at (0,-2.15) {$\ip{\Delta x}{M^{-1}p_t} < 0$};
+  \end{scope}
+\end{tikzpicture}

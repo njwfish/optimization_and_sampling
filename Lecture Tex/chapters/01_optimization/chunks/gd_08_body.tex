@@ -1,0 +1,19 @@
+One way to mitigate poor conditioning is to change the geometry of the update.
+Instead of \eqref{eq:gd-update}, consider
+\begin{equation}
+  x^{(k+1)} = x^{(k)} - t^{(k)} A \nabla f(x^{(k)}),
+  \label{eq:preconditioned-gd}
+\end{equation}
+where $A \succ 0$ is a chosen matrix (a \emph{preconditioner}).
+Equivalently, \eqref{eq:preconditioned-gd} corresponds to a linear change of variables that aims to make level sets of $f$ ``more spherical'' so that one step size works well in all directions.
+Choosing a good $A$ typically requires problem-specific structure; see \citet[\S9.4]{boyd_vandenberghe_2004_convex}.
+
+If $A$ is positive definite, the direction $-A\nabla f(x)$ is the steepest-descent direction when distance is measured in the norm $\norm{u}_{A^{-1}}=\sqrt{u^\top A^{-1}u}$.
+Good choices of $A$ make this geometry align with the curvature of $f$; heuristically, $A \approx \Hess f(x)^{-1}$ reduces the effective condition number.
+For the ridge logistic objective \eqref{eq:logistic-ridge-objective}, this picture is quite concrete.
+The weighted Gram matrix $X^\top W(\theta)X$ records how sharply the loss curves in different directions, while the ridge term $mI$ adds the same amount of curvature everywhere.
+A useful preconditioner therefore tries to match this combined geometry rather than treating every coordinate direction identically.
+
+In practice, explicit matrix preconditioners are often approximated or restricted to be cheap.
+For example, many ``adaptive'' optimizers in machine learning can be interpreted as choosing a diagonal (or block-diagonal) preconditioner based on running second-moment statistics of the stochastic gradients; see the EMA discussion in \cref{subsubsec:sgd-practical-guidance}.
+

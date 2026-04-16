@@ -1,0 +1,1497 @@
+\documentclass[11pt]{article}
+
+% Make this file compilable from the repo root or within `Lecture Tex/handouts/`.
+\makeatletter
+\def\input@path{{../../}{../}{Lecture Tex/}}
+\makeatother
+\input{preamble}
+\usepackage{float} % for [H] placement specifier in algorithms
+
+\graphicspath{{../../}{../}{Lecture Tex/}{../../figures/}{../figures/}{Lecture Tex/figures/}}
+
+% ------------------------------------------------------------
+% Build toggle for solutions.
+% - Student version (default): show workspace boxes, hide solutions.
+% - Solutions version: define \STATshowsolutions on the command line.
+%   Preferred repo-level build (compiles the titled PDFs directly and clears legacy outputs):
+%     python3 scripts/build_handouts.py --section 2
+%   Example:
+%     pdflatex "\def\STATshowsolutions{1}\input{Lecture Tex/handouts/section 2/section_parallel_mcmc.tex}"
+%   (Low-level direct build: if you invoke latexmk manually, set -jobname to the
+%    titled output so the compiled PDF matches the standard naming scheme.)
+%     (cd "Lecture Tex/handouts/section 2" && latexmk -pdf -interaction=nonstopmode -halt-on-error \
+%       -pdflatex='pdflatex %O "\\def\\STATshowsolutions{1}\\input{%S}"' section_parallel_mcmc.tex)
+\newif\ifshowsolutions
+\showsolutionsfalse
+\ifdefined\STATshowsolutions
+  \showsolutionstrue
+\fi
+\ifcsname STAT221SOLUTIONS\endcsname
+  \showsolutionstrue
+\fi
+
+% Solutions boxes (controlled by \ifshowsolutions).
+% Usage: \SolutionBox[<workspace lines>]{<solution body>}
+\newcommand{\SolutionBox}[2][10]{%
+  \ifshowsolutions
+    \begin{tcolorbox}[stat221panelgray,title={Solution}]
+    #2
+    \end{tcolorbox}
+  \else
+    \begin{tcolorbox}[stat221panelgray,unbreakable,title={Workspace}]
+    \vspace{#1\baselineskip}
+    \end{tcolorbox}
+  \fi
+}
+
+\title{Parallel-in-time evaluation of MCMC sample paths}
+\author{}
+\date{}
+
+\begin{document}
+\maketitle
+
+\section[Parallel-in-time MCMC]{Parallel-in-time evaluation of MCMC sample paths}
+\label{sec:parallel-mcmc}
+
+Suppose a sampler evolves by a randomized update of the form
+\[
+x_{t+1}=F(x_t,\xi_{t+1}),
+\qquad
+\xi_{t+1}\stackrel{\text{i.i.d.}}{\sim}\mu.
+\]
+The Sampling unit studies such updates through the laws they generate, but this handout fixes one realization of the random inputs and asks a different question: can the resulting trajectory be recovered faster than one step at a time on parallel hardware?
+The object of study is therefore not the chain law itself but the deterministic path in the product space of trajectories.
+
+Long trajectories still matter for the same reason as in the main notes.
+To estimate $\E_\pi[h(X)]$ under a target distribution $\pi$, one averages a function of the states along a long run,
+\[
+\hat{\mu}_T = \frac{1}{T}\sum_{t=1}^T h(x_t),
+\]
+and increasing $T$ typically reduces Monte Carlo error, up to the usual issues of burn-in and dependence.
+For Langevin-type samplers, freezing the randomness turns that long-run sampling problem into a deterministic trajectory problem.
+This handout therefore sits between two parts of the main notes: it builds on the Sampling unit's gradient-based MCMC material and on the Optimization unit's treatment of fixed points, conditioning, and Newton/Gauss--Newton local models, and it prepares for later augmented-state and bridge-based sampling viewpoints where whole trajectories become computational objects.
+
+\subsection{From sampling to deterministic trajectory equations}
+\label{subsec:fixed-point}
+
+Once the random numbers are fixed, a length-$T$ sample path is no longer random at all: it is the solution of a deterministic system in the full trajectory $x_{1:T}\in(\R^d)^T$.
+The natural object is therefore a trajectory-space nonlinear least-squares problem, with fixed-point and rootfinding formulations as equivalent descriptions of the same equations.
+\footnote{This fixed-randomness trajectory viewpoint appears broadly in work on parallelizing nonlinear recursions and sequential samplers; see, e.g., \citet[\S2]{zoltowski_wu_gonzalez_kozachkov_linderman_2025_parallel_mcmc_sequence_length}, \citet[\S3]{shih_belkhale_ermon_sadigh_anari_2023_parallel_sampling_diffusion}, \citet[\S3]{lim_zhu_selfridge_kasim_2024_parallelizing_nonlinear_sequential_models}, and \citet[\S1]{gonzalez_warrington_smith_linderman_2024_towards_scalable_stable_parallelization_nonlinear_rnns}. For background on state space models and parallel Newton methods, see \citet[Ch.~2]{gonzalez_2026_parallelizing_inherently_sequential_processes_thesis}.}
+
+Concretely, many samplers can be written in the reparameterized form
+\begin{equation}
+  x_t = F(x_{t-1},\xi_t),
+  \qquad \xi_t \stackrel{\text{i.i.d.}}{\sim} \mu,
+  \label{eq:reparam-rollout}
+\end{equation}
+for some deterministic map $F$.
+Fix a horizon $T$ and a realization $\xi_{1:T}$.
+Define deterministic transition maps $f_t(x):=F(x,\xi_t)$.
+Then the sequential sampler computes the rollout
+\begin{equation}
+  x_t = f_t(x_{t-1}),\qquad t=1,\dots,T.
+  \label{eq:general-rollout}
+\end{equation}
+
+With $\xi_{1:T}$ fixed, trajectory computation becomes the nonlinear least-squares problem
+\[
+\min_{x_{1:T}\in(\R^d)^T}\ \mathcal{L}(x_{1:T})
+:=\frac12\sum_{t=1}^T \norm{x_t-f_t(x_{t-1})}_2^2
+\quad\text{(fixed noise, fixed $x_0$).}
+\]
+Its global minimum value is $0$, the minimizer is exactly the sequential rollout, and under differentiability of the $f_t$ the objective has a single stationary point.
+The reason is structural: each term links only $(x_{t-1},x_t)$, so the system is triangular in time.
+We prove this in \Cref{prop:unique-rollout-and-geometry}; that fact is what lets us focus on \emph{how} to solve the trajectory equations quickly.
+
+For bookkeeping it is helpful to define the \emph{trajectory map} $\mathcal{T}:(\R^d)^T\to(\R^d)^T$ by
+\[
+(\mathcal{T}(x_{1:T}))_1 := f_1(x_0),\qquad
+(\mathcal{T}(x_{1:T}))_t := f_t(x_{t-1}),\quad t=2,\dots,T.
+\]
+Then the rollout equations \eqref{eq:general-rollout} are exactly the fixed-point condition
+\[
+  x_{1:T}=\mathcal{T}(x_{1:T}).
+\]
+Equivalently, with the residual $r(x_{1:T}) := x_{1:T}-\mathcal{T}(x_{1:T})$, the sequential sample path is the unique trajectory with $r(x_{1:T})=0$.
+(We make this rootfinding formulation and its Jacobian structure explicit in \Cref{subsec:residual}.)
+
+With the randomness fixed, \emph{Picard and Gauss--Newton are simply different iterative solvers for this same deterministic rootfinding / least-squares problem}:
+Picard is successive approximation (a ``first-order'' method), while Gauss--Newton uses Jacobians (a ``second-order'' method) to reduce iteration count.
+In principle one could plug in many other optimizers (gradient descent, quasi-Newton, etc.);
+we focus on these two because they make the parallel structure clearest and their tradeoffs mirror the familiar first-order versus second-order story.
+
+This does not change the MCMC algorithm.
+The goal is simply to recover, up to numerical tolerance, the same sample path as the sequential implementation, but by iterating on the full trajectory in parallel.
+
+Why can this be faster?
+At any current guess $x_{1:T}^{(k)}$, the ``local'' quantities $f_t(x_{t-1}^{(k)})$ (and, for Gauss--Newton, their Jacobians) can be computed in parallel over $t$.
+What remains is the coupling across time, and in the cases we focus on it reduces to a scan, i.e.\ a parallel prefix computation with only $\mathcal{O}(\log T)$ depth.
+For ULA, Picard updates become a scan-friendly cumulative sum, and Gauss--Newton steps reduce to a scan-based solve of a block lower-bidiagonal linear system.
+
+This gives the usual parallel tradeoff: a sequential rollout costs depth $T$, while $K$ trajectory iterations cost roughly $\mathcal{O}(K\log T)$ depth with $\mathcal{O}(T)$ work per iteration.
+When drift or Jacobian evaluations can be batched across time, that reduction in depth can translate into a real wall-clock gain on GPUs or TPUs.
+
+To make the main idea as concrete as possible, we focus almost entirely on one sampler: the unadjusted Langevin algorithm (ULA).
+ULA is a clean starting point because, after we condition on its Gaussian noise, each step is a differentiable map, and the additive structure of the update makes scan operations especially transparent.
+The same viewpoint extends, with varying fidelity, to reparameterized Gibbs, SGLD, and Metropolis-corrected samplers.
+
+Throughout, $T$ denotes the chain length and $d$ the state dimension.
+We use $t\in\{1,\dots,T\}$ for the chain index and $k\in\{0,1,2,\dots\}$ for iterations of a trajectory solver (Picard or Gauss--Newton).
+
+We postpone the discussion of \emph{when} the trajectory solve is easy or hard---and why the burn-in/away-from-stationarity part of the chain can be computationally special---to the end of the note; see \Cref{subsec:when-works,subsec:burnin-stationarity}.
+
+\subsection{Rootfinding and least squares in trajectory space}
+\label{subsec:residual}
+
+Optimization and rootfinding are linked by stationarity: under mild regularity, a local minimizer must satisfy $\nabla f(x)=0$, which is itself a rootfinding problem.
+Conversely, any rootfinding problem $r(x)=0$ can be written as the minimization of $\tfrac12\norm{r(x)}_2^2$.
+
+For fixed randomness, the rollout recursion \eqref{eq:general-rollout} becomes a triangular nonlinear system in the full trajectory.
+We keep the least-squares objective $\mathcal{L}$ as the main lens, and we use the fixed-point and rootfinding views to expose the structure that matters for algorithms.
+Making the residual explicit will let us state the uniqueness/geometry facts and see the sparsity that makes scan-based parallelization possible.
+
+Throughout this note we move freely between three equivalent viewpoints on the fixed-noise trajectory problem:
+\begin{enumerate}[leftmargin=*]
+  \item the least-squares problem $\min_{x_{1:T}}\ \mathcal{L}(x_{1:T})=\tfrac12\norm{r(x_{1:T})}_2^2$;
+  \item the fixed-point equation $x_{1:T}=\mathcal{T}(x_{1:T})$ from \Cref{subsec:fixed-point};
+  \item the rootfinding problem $r(x_{1:T})=0$, where $r=x_{1:T}-\mathcal{T}(x_{1:T})$.
+\end{enumerate}
+These are the standard optimization tools in different clothes: Picard is fixed-point iteration on the trajectory equations, gradient descent is fixed-point iteration on $x\mapsto x-\alpha\nabla\mathcal{L}(x)$, and Gauss--Newton/Newton uses Jacobians of $r$ to accelerate convergence.
+When $\mathcal{L}(x)=\tfrac12\norm{r(x)}_2^2$, Gauss--Newton is just that idea applied to the trajectory residual; see \Cref{subsec:newton-trajectory}.
+
+\begin{definition}[Trajectory residual]
+\label{def:trajectory-residual}
+Fix $x_0$ and the transition maps $f_{1:T}$.
+For a candidate trajectory $x_{1:T}=(x_1,\dots,x_T) \in (\R^d)^T$, define residual blocks
+\begin{equation}
+  r_1(x_{1:T}) := x_1 - f_1(x_0),
+  \qquad
+  r_t(x_{1:T}) := x_t - f_t(x_{t-1}), \quad t=2,\dots,T,
+  \label{eq:residual-blocks}
+\end{equation}
+and let $r(x_{1:T}) \in (\R^d)^T$ denote the stacked vector $(r_1,\dots,r_T)$.
+\end{definition}
+
+It is often helpful to interpret these residuals as \emph{defects} from the rollout constraints.
+Define $\delta_t := r_t(x_{1:T})$.
+Then any defect sequence $\delta_{1:T}$ determines a unique trajectory via the forward recursion
+\[
+x_1 = f_1(x_0)+\delta_1,\qquad
+x_t = f_t(x_{t-1})+\delta_t,\quad t=2,\dots,T,
+\]
+and conversely, any trajectory determines its defects.
+Thus the map $x_{1:T}\mapsto \delta_{1:T}$ is a triangular change of variables, and in defect coordinates the objective is just
+\[
+  \mathcal{L}(x_{1:T}) = \tfrac12 \sum_{t=1}^T \norm{\delta_t}_2^2.
+\]
+This makes the uniqueness of the minimizer feel inevitable: the only way to drive $\mathcal{L}$ to zero is $\delta_t=0$ for all $t$, i.e.\ the exact rollout.
+The Jacobian viewpoint below formalizes the same idea: the residual map has a block lower-triangular Jacobian with identity blocks on the diagonal, so $\nabla\mathcal{L}=J^\top r$ vanishes only when $r=0$.
+
+Notice that with the trajectory map $\mathcal{T}$ from \Cref{subsec:fixed-point}, the stacked residual in \Cref{def:trajectory-residual} is exactly
+\[
+r(x_{1:T}) = x_{1:T}-\mathcal{T}(x_{1:T}).
+\]
+We will use the corresponding merit function
+\[
+  \mathcal{L}(x_{1:T}) := \tfrac12 \norm{r(x_{1:T})}_2^2,
+\]
+which turns the fixed-noise trajectory problem into a deterministic nonlinear least-squares objective.
+
+\begin{proposition}[Correctness of the residual formulation]
+\label{prop:residual-correctness}
+A trajectory $x_{1:T}$ satisfies the rollout recursion \eqref{eq:general-rollout} if and only if $r(x_{1:T})=0$.
+\end{proposition}
+
+\begin{proof}
+The statement is a direct restatement of \eqref{eq:residual-blocks}.
+\end{proof}
+
+The Jacobian of $r(x_{1:T})$ with respect to $x_{1:T}$ inherits the Markov structure: each block $r_t$ depends only on $(x_{t-1},x_t)$.
+This sparsity is what makes Newton-like methods attractive here.
+See \Cref{fig:parallel-mcmc-residual-jacobian} for a compact visual summary.
+
+\begin{figure}[t]
+  \centering
+  \resizebox{\linewidth}{!}{\input{figures/handouts/parallel_mcmc/fig_parallel_mcmc_residual_jacobian}}
+  \caption{Left: each residual block $r_t(x_{t-1},x_t)=x_t-f_t(x_{t-1})$ couples only adjacent states.
+  Right: the Jacobian $J=\frac{\partial r}{\partial x_{1:T}}$ is block lower bidiagonal, with diagonal blocks $I_d$ and subdiagonal blocks $-\frac{\partial f_t}{\partial x}(x_{t-1})$.}
+  \label{fig:parallel-mcmc-residual-jacobian}
+\end{figure}
+
+Assume each $f_t$ is differentiable and write $A_t(x):=\frac{\partial f_t}{\partial x}(x)\in\R^{d\times d}$ for the single-step Jacobian.
+
+\begin{proposition}[Jacobian structure]
+\label{prop:jacobian-structure}
+The Jacobian matrix $J(x_{1:T}) := \frac{\partial r}{\partial x_{1:T}}(x_{1:T}) \in \R^{Td \times Td}$ is block lower bidiagonal, with diagonal blocks $I_d$ and subdiagonal blocks $-A_t(x_{t-1})$ for $t=2,\dots,T$.
+\end{proposition}
+
+\begin{proof}
+Differentiate the residual blocks $r_t$ from \eqref{eq:residual-blocks}.
+For $t=1$, $r_1(x_{1:T})=x_1-f_1(x_0)$, so $\frac{\partial r_1}{\partial x_1}=I_d$ and $\frac{\partial r_1}{\partial x_j}=0$ for $j\ne 1$.
+For $t\ge 2$, $r_t(x_{1:T})=x_t-f_t(x_{t-1})$, so
+\[
+\frac{\partial r_t}{\partial x_t}=I_d,\qquad \frac{\partial r_t}{\partial x_{t-1}}=-A_t(x_{t-1}),\qquad \frac{\partial r_t}{\partial x_j}=0\ \text{for } j\notin\{t-1,t\}.
+\]
+Stacking these block derivatives yields the claimed block lower bidiagonal structure.%
+\end{proof}
+
+\begin{corollary}[The Gauss--Newton linear solve is always well-defined]
+\label{cor:newton-solve-well-defined}
+For any candidate trajectory $x_{1:T}$, the Jacobian $J(x_{1:T})$ is invertible.
+Moreover, solving $J(x_{1:T})\,\Delta x_{1:T}=-r(x_{1:T})$ is equivalent to solving a forward recursion in $t$.
+\end{corollary}
+
+\begin{proof}
+By \Cref{prop:jacobian-structure}, $J(x_{1:T})$ is block lower triangular with diagonal blocks equal to $I_d$.
+Therefore $J(x_{1:T})$ is invertible (its determinant is $1$).
+The forward-recursion claim is the usual forward substitution for a lower bidiagonal linear system.%
+\end{proof}
+
+\begin{proposition}[Key geometry fact (triangular least squares)]
+\label{prop:unique-rollout-and-geometry}
+Fix $x_0$ and deterministic transition maps $f_{1:T}$, and assume each $f_t$ is differentiable.
+Define the trajectory residual $r(x_{1:T})$ by \eqref{eq:residual-blocks} and the merit function $\mathcal{L}(x_{1:T})=\tfrac12\norm{r(x_{1:T})}_2^2$.
+Then:
+\begin{enumerate}[leftmargin=*]
+  \item The rollout recursion $x_t=f_t(x_{t-1})$ has a unique solution $x^\star_{1:T}$.
+  Equivalently, $\mathcal{L}$ has a unique global minimizer $x^\star_{1:T}$ and $\mathcal{L}(x^\star_{1:T})=0$.
+  \item $\mathcal{L}$ has a unique stationary point, namely $x^\star_{1:T}$.
+  In particular, $\mathcal{L}$ has no spurious local minima.
+\end{enumerate}
+\end{proposition}
+\begin{proof}
+\begin{enumerate}[leftmargin=*]
+  \item The recursion $x_1=f_1(x_0),\ x_2=f_2(x_1),\dots,\ x_T=f_T(x_{T-1})$ uniquely determines $(x_1,\dots,x_T)$; call the result $x^\star_{1:T}$.
+  By construction $r(x^\star_{1:T})=0$, hence $\mathcal{L}(x^\star_{1:T})=0$.
+  Since $\mathcal{L}(x_{1:T})=\tfrac12\norm{r(x_{1:T})}_2^2\ge 0$ for all $x_{1:T}$, $x^\star_{1:T}$ is a global minimizer.
+  If $\mathcal{L}(\hat x_{1:T})=0$, then $r(\hat x_{1:T})=0$, so by \Cref{prop:residual-correctness} the trajectory $\hat x_{1:T}$ satisfies the rollout recursion and must equal $x^\star_{1:T}$.
+  \item By the chain rule,
+  \[
+    \nabla \mathcal{L}(x_{1:T}) = J(x_{1:T})^\top r(x_{1:T}),
+  \]
+  where $J(x_{1:T})=\frac{\partial r}{\partial x_{1:T}}(x_{1:T})$.
+  By \Cref{cor:newton-solve-well-defined}, $J(x_{1:T})$ is invertible for every $x_{1:T}$, hence so is $J(x_{1:T})^\top$.
+  Therefore $\nabla \mathcal{L}(x_{1:T})=0$ if and only if $r(x_{1:T})=0$, which (by the first part) holds only at $x^\star_{1:T}$.%
+\end{enumerate}
+\end{proof}
+
+\Cref{prop:unique-rollout-and-geometry} is the key geometry fact:
+for fixed randomness, the trajectory objective $\mathcal{L}$ has a single stationary point and no spurious local minima, even though it is generally nonconvex.
+The question is therefore not \emph{which} trajectory the solver might find, but \emph{whether} a particular iterative method converges quickly and stably.
+This is the same kind of ``basin of attraction / conditioning'' issue that appears throughout optimization: the problem has a unique solution, but an algorithm can still be fragile or slow depending on the geometry it encounters along the way; see \Cref{subsec:when-works}.
+That is the main contrast with the nonconvex examples in the Optimization unit and with the expectation--maximization subsection in the Augmented-state optimization unit: here the fixed-noise objective may be nonconvex, but it does not create bad local minima, so the hard part is conditioning and basin size of the iterative solver rather than the existence of competing optima.
+
+\subsection{ULA warm-up: quadratic potential \texorpdfstring{$\Rightarrow$}{=>} an affine recursion}
+\label{subsec:warmup-affine}
+
+We begin with the simplest ULA setting, where the potential is quadratic and the target is Gaussian.
+In that case each step is affine, so the full trajectory can be recovered from a single prefix computation.
+
+\subsubsection{Unadjusted Langevin algorithm (ULA)}
+\label{subsubsec:parallel-mcmc-ula}
+
+Suppose the target density has the form $\pi(x)\propto e^{-U(x)}$ on $\R^d$.
+In the Sampling unit's gradient-based MCMC subsection, the ULA recursion appears as
+\[
+x_{t+1}=x_t-\epsilon \nabla U(x_t)+\sqrt{2\epsilon}\,\xi_{t+1}.
+\]
+Here we keep the full path indexed as $x_0,\dots,x_T$, so each trajectory constraint naturally couples $(x_{t-1},x_t)$.
+Accordingly, we relabel the same update by one step and write
+\begin{equation}
+  x_t = x_{t-1} - \epsilon \nabla U(x_{t-1}) + \sqrt{2\epsilon}\,\xi_t,
+  \qquad \xi_t \sim \mathcal{N}(0,I_d).
+  \label{eq:ula-update}
+\end{equation}
+This is only a bookkeeping convention for the trajectory solve; the algorithm itself is unchanged.
+The only randomness is the Gaussian noise $\xi_t$; conditional on $\xi_t$, the update is deterministic.
+
+\begin{definition}[ULA rollout with fixed noise]
+\label{def:ula-rollout-fixed-noise}
+Fix an initial state $x_0$ and realized noise vectors $\xi_1,\dots,\xi_T$.
+Define the per-step update maps
+\[
+f_t(x) := x - \epsilon \nabla U(x) + \sqrt{2\epsilon}\,\xi_t,
+\qquad t=1,\dots,T.
+\]
+The sequential ULA implementation is the recursion
+\begin{equation}
+  x_t = f_t(x_{t-1}), \qquad t=1,\dots,T,
+  \label{eq:rollout-recursion}
+\end{equation}
+which uniquely determines the sample path $x_{1:T}=(x_1,\dots,x_T)$ once the noise is fixed.
+\end{definition}
+
+\begin{figure}[t]
+  \centering
+  \input{figures/main_notes/sampling/fig_parallel_mcmc_ula_energy_path_1d}
+  \caption{A one-dimensional energy $U$ and a sequential ULA trajectory for one fixed noise realization.
+  \emph{Left:} the potential curve with the visited states drawn in the $(x,U(x))$ plane.
+  \emph{Right:} the same trajectory as a time series.}
+  \label{fig:parallel-mcmc-ula-energy-path}
+\end{figure}
+
+\begin{example}[Quadratic potential $\Rightarrow$ affine recursion]
+\label{ex:quadratic-ula-affine}
+Let $U(x)=\tfrac12 x^\top Qx$ with $Q\succeq 0$.
+Then $\nabla U(x)=Qx$, and \eqref{eq:ula-update} becomes
+\begin{equation}
+  x_t = A x_{t-1} + b_t,
+  \qquad
+  A:=I_d-\epsilon Q,
+  \qquad
+  b_t:=\sqrt{2\epsilon}\,\xi_t.
+  \label{eq:affine-recursion-ula}
+\end{equation}
+For fixed randomness $(\xi_t)_{t=1}^T$, evaluating the MCMC trajectory is exactly the task of evaluating an affine recursion.%
+\end{example}
+
+So the ``parallel-in-time'' question becomes whether the whole sequence $(x_t)_{t=1}^T$ can be computed from the per-step affine maps without stepping one time index at a time.
+
+\subsubsection{Composing affine updates in parallel}
+\label{subsubsec:affine-scan}
+
+Consider a general time-varying affine recursion
+\begin{equation}
+  x_t = A_t x_{t-1} + b_t,
+  \qquad t=1,\dots,T,
+  \label{eq:affine-recursion}
+\end{equation}
+where $A_t\in\R^{d\times d}$ and $b_t\in\R^d$ are given.
+Define the per-step affine maps $\varphi_t:\R^d\to\R^d$ by $\varphi_t(z)=A_t z+b_t$.
+
+\begin{lemma}[Composing affine maps]
+\label{lem:affine-composition}
+Let $\varphi(z)=Az+b$ and $\psi(z)=Cz+d$ be affine maps on $\R^d$.
+Then $\psi\circ\varphi$ is affine, with
+\[
+(\psi\circ\varphi)(z) = (CA)z + (Cb+d).
+\]
+In particular, affine maps are closed under composition, and composition is associative.
+\end{lemma}
+
+\begin{proof}
+For any $z\in\R^d$,
+\[
+(\psi\circ\varphi)(z)
+=\psi(Az+b)
+=C(Az+b)+d
+=(CA)z+(Cb+d),
+\]
+which is again of the form ``matrix times $z$ plus vector''.
+Associativity follows because function composition is associative.%
+\end{proof}
+
+\begin{proposition}[Prefix compositions solve the affine recursion]
+\label{prop:affine-prefix}
+Define the prefix compositions
+\[
+\Phi_t := \varphi_t\circ\varphi_{t-1}\circ\cdots\circ\varphi_1,
+\qquad t=1,\dots,T.
+\]
+We use $\Phi_t$ for these affine prefix compositions (distinct from the trajectory map $\mathcal{T}$ in \Cref{subsec:fixed-point}).
+Then the recursion \eqref{eq:affine-recursion} satisfies $x_t=\Phi_t(x_0)$ for all $t$.
+Moreover, each $\Phi_t$ is affine: there exist $P_t\in\R^{d\times d}$ and $q_t\in\R^d$ such that $\Phi_t(z)=P_t z+q_t$.
+These coefficients satisfy
+\[
+P_1=A_1,\quad q_1=b_1,
+\qquad
+P_t=A_tP_{t-1},\quad q_t=A_tq_{t-1}+b_t,\qquad t=2,\dots,T.
+\]
+In particular, $x_t=P_t x_0+q_t$ for all $t$.
+\end{proposition}
+
+\begin{proof}
+The recursion says $x_t=\varphi_t(x_{t-1})$, so unrolling gives $x_t=\Phi_t(x_0)$.
+
+For the affine form, note that $\Phi_1=\varphi_1$, so $P_1=A_1$ and $q_1=b_1$.
+Assume $\Phi_{t-1}(z)=P_{t-1}z+q_{t-1}$.
+Then
+\[
+\Phi_t(z)
+=\varphi_t(\Phi_{t-1}(z))
+=A_t(P_{t-1}z+q_{t-1})+b_t
+=(A_tP_{t-1})z+(A_tq_{t-1}+b_t),
+\]
+so $P_t=A_tP_{t-1}$ and $q_t=A_tq_{t-1}+b_t$.
+Evaluating $\Phi_t$ at $z=x_0$ gives $x_t=P_t x_0+q_t$.%
+\end{proof}
+
+At this point the sequential dependence of \eqref{eq:affine-recursion} has been pushed into one object, the prefix compositions $\Phi_t=\varphi_t\circ\cdots\circ\varphi_1$.
+\Cref{prop:affine-prefix} says that once these are known, every state is just $x_t=\Phi_t(x_0)$.
+The remaining question is whether all prefix compositions can be computed without a length-$T$ sequential loop.
+
+To see where the logarithm comes from, it helps to start with a very concrete case: cumulative sums on $\R$.
+Given numbers $s_1,\dots,s_T$, define
+\[
+p_t := s_t + s_{t-1} + \cdots + s_1.
+\]
+The sequential recursion $p_t=s_t+p_{t-1}$ is a length-$T$ loop.
+
+Now suppose for simplicity that $T=2^m$.
+In one parallel round we can form the pairwise sums
+\[
+u_j := s_{2j}+s_{2j-1}, \qquad j=1,\dots,T/2.
+\]
+By associativity, the even prefixes satisfy
+\[
+p_{2j}=u_j+u_{j-1}+\cdots+u_1,
+\]
+so computing all even prefixes reduces to computing prefix sums for a list of length $T/2$.
+Repeating the same pairing step halves the length each round, so after $m=\log_2 T$ rounds the list has length one.
+To obtain all prefixes (including the odd indices), one keeps these partial sums in the balanced tree created by the repeated pairings and performs a short reverse pass that distributes the correct left-prefix to each subtree; \Cref{fig:parallel-scan-affine} shows this tree.
+
+Nothing in this argument used anything special about addition beyond associativity.
+The same idea applies to \emph{function composition}, which is also associative and is exactly what we need for \eqref{eq:affine-recursion}.
+Concretely, we take the balanced tree in \Cref{fig:parallel-scan-affine} and replace each ``$+$'' with ``$\circ$'': each parallel round composes many disjoint pairs at once, and a short reverse pass distributes the correct left-prefix to each subtree.
+
+\begin{definition}[Scan / prefix compositions]
+\label{def:scan}
+Given maps $g_1,\dots,g_T:\R^d\to\R^d$, the (inclusive) \textbf{scan} returns the sequence of prefix compositions
+\[
+G_t := g_t \circ g_{t-1} \circ \cdots \circ g_1,
+\qquad t=1,\dots,T.
+\]
+\end{definition}
+
+The order in \Cref{def:scan} is chosen so that $G_t$ means “apply step $1$, then $2$, and so on up to $t$.”%
+The same pairing argument shows that scans can be implemented in $\mathcal{O}(\log T)$ parallel rounds with $\mathcal{O}(T)$ total work, because the only property we used was associativity.
+This is the recurring pattern in the later algorithms: once the across-time coupling is rewritten as an affine recursion, scan does the rest.
+
+In our affine-recursion setting, the scan inputs are the affine maps $\varphi_t(z)=A_t z+b_t$.
+The scan outputs are the prefix compositions $\Phi_t=\varphi_t\circ\cdots\circ\varphi_1$.
+By \Cref{prop:affine-prefix}, each $\Phi_t$ has the form $z\mapsto P_t z+q_t$, so once we have computed all $(P_t,q_t)$ we can recover the whole trajectory via $x_t=P_t x_0+q_t$.
+\Cref{fig:parallel-scan-affine} shows the basic divide-and-conquer tree underlying this computation.%
+
+\begin{figure}[t]
+  \centering
+  \input{figures/handouts/parallel_mcmc/fig_parallel_scan_affine}
+  \caption{Divide-and-conquer tree of compositions (the up-sweep) for affine maps.
+  A scan uses this kind of balanced tree to compute all prefix compositions in only $\mathcal{O}(\log T)$ parallel rounds (rather than $T$ sequential rounds).}
+  \label{fig:parallel-scan-affine}
+\end{figure}
+
+The next exercise is the scalar version of the same affine-prefix identity.
+\begin{exercise}[A scalar warm-up: expanding an affine recursion]
+\label{ex:scalar-affine-expansion}
+Consider the one-dimensional recursion $x_t=ax_{t-1}+b_t$ with $a\in\R$ fixed.
+Show that
+\[
+x_t=a^t x_0+\sum_{s=1}^t a^{t-s} b_s.
+\]
+Explain in one sentence why this is compatible with the scan viewpoint above.
+\end{exercise}
+\SolutionBox[12]{%
+This is the scalar unrolling that the scan packages in parallel.
+We expand by induction.
+For $t=1$, $x_1=ax_0+b_1$, which matches the formula.
+Assume $x_{t-1}=a^{t-1}x_0+\sum_{s=1}^{t-1} a^{t-1-s}b_s$.
+Then
+\[
+x_t = a x_{t-1}+b_t
+= a\left(a^{t-1}x_0+\sum_{s=1}^{t-1} a^{t-1-s}b_s\right)+b_t
+= a^t x_0+\sum_{s=1}^{t-1} a^{t-s}b_s+b_t
+= a^t x_0+\sum_{s=1}^{t} a^{t-s}b_s.
+\]
+The scan viewpoint packages these same expansions using associativity: instead of forming powers $a^{t-s}$ explicitly, it composes the per-step affine maps in a divide-and-conquer way to obtain all prefixes in $\mathcal{O}(\log T)$ depth.%
+}
+
+The quadratic case is special because the rollout recursion is affine, so one scan produces the entire trajectory.
+For a general energy $U$, the maps $f_t$ in \Cref{def:ula-rollout-fixed-noise} are nonlinear, so there is no single scan that recovers $x_{1:T}$ from $x_0$.
+
+A natural next step is to ask whether we can still reuse the scan idea \emph{inside an iterative solver}.
+We start with the simplest such solver: Picard iteration (successive approximation), which only uses evaluations of $\nabla U$.
+
+\subsection{Picard iteration: parallel fixed-point updates for ULA}
+\label{subsec:picard}
+
+The Picard part of the story uses only fixed-point iteration on the trajectory equations, so the per-iteration work is just drift or increment evaluation together with a scan.
+Its convergence is linear, which is why contraction, damping, or windowing matter.
+
+\subsubsection{ULA in cumulative-sum form}
+\label{subsubsec:ula-cumsum}
+
+Fix a noise realization $\xi_{1:T}$.
+For notational convenience, define the \emph{increment} map
+\[
+g_t(x) := -\epsilon\nabla U(x)+\sqrt{2\epsilon}\,\xi_t,\qquad t=1,\dots,T.
+\]
+Then the ULA recursion \eqref{eq:ula-update} can be written as
+\begin{equation}
+  x_t = x_{t-1} + g_t(x_{t-1}),\qquad t=1,\dots,T.
+  \label{eq:ula-increment-form}
+\end{equation}
+Summing \eqref{eq:ula-increment-form} from $1$ to $t$ gives the equivalent cumulative form
+\begin{equation}
+  x_t = x_0 + \sum_{s=1}^t g_s(x_{s-1}),\qquad t=1,\dots,T.
+  \label{eq:ula-cumsum-form}
+\end{equation}
+Viewed as an equation in the unknown path $x_{1:T}$, \eqref{eq:ula-cumsum-form} is a fixed-point formulation of the rollout.
+It has the same solution as the step-by-step recursion \eqref{eq:rollout-recursion}, but it makes the scan structure explicit.
+There are multiple equivalent fixed-point formulations.
+For example, the direct Picard map $x_t^{(k+1)}=f_t(x_{t-1}^{(k)})$ computes all $f_t$ in parallel with $\mathcal{O}(1)$ depth, while the cumulative-sum form \eqref{eq:ula-cumsum-form} exposes a scan.
+We focus on the scan-friendly form because it matches the same ``evaluate many time indices, then combine them'' pattern that appears in modern bridge-based diffusion samplers, and it aligns with the scan-based linear solve used by Gauss--Newton.
+
+Equation \eqref{eq:ula-cumsum-form} suggests a simple parallel strategy:
+if we had a good guess of the states $(x_{t-1})_{t=1}^T$, we could evaluate all increments $g_t(x_{t-1})$ in parallel, and then recover $(x_t)_{t=1}^T$ by a single prefix sum.
+This leads to Picard iteration.
+
+\subsubsection{Picard iteration and where scan enters}
+\label{subsubsec:picard-scan}
+
+Starting from a guess $x_{1:T}^{(0)}$, define iterates $x_{1:T}^{(k)}$ by
+\begin{equation}
+  x_t^{(k+1)} = x_0 + \sum_{s=1}^t g_s\!\left(x_{s-1}^{(k)}\right),
+  \qquad t=1,\dots,T,
+  \label{eq:picard-ula}
+\end{equation}
+where we interpret $x_0^{(k)}=x_0$ for all $k$.
+If the iteration converges, its limit must satisfy \eqref{eq:ula-cumsum-form}, hence is the same trajectory as the sequential rollout \eqref{eq:rollout-recursion}.
+
+\begin{proposition}[One Picard update is parallel increments + a scan]
+\label{prop:picard-scan}
+Fix a Picard iterate $x_{1:T}^{(k)}$ and define the per-time increments
+\[
+d_t^{(k)} := g_t\!\left(x_{t-1}^{(k)}\right)
+=-\epsilon\nabla U(x_{t-1}^{(k)})+\sqrt{2\epsilon}\,\xi_t,\qquad t=1,\dots,T.
+\]
+Then the next iterate satisfies
+\[
+x_t^{(k+1)} = x_0 + \sum_{s=1}^t d_s^{(k)},\qquad t=1,\dots,T.
+\]
+In particular, once the $d_t^{(k)}$ are available (parallel over $t$), forming $x_{1:T}^{(k+1)}$ is exactly a prefix-sum scan.%
+\end{proposition}
+\begin{proof}
+This is a direct restatement of \eqref{eq:picard-ula}.%
+\end{proof}
+
+\begin{figure}[t]
+  \centering
+  \resizebox{\linewidth}{!}{\input{figures/handouts/parallel_mcmc/fig_parallel_mcmc_picard_pipeline}}
+  \caption{One Picard iteration on the full trajectory: compute the increments $g_t(x_{t-1}^{(k)})$ in parallel across time, then use a scan (prefix sum) to integrate those increments and update the whole path.}
+  \label{fig:parallel-mcmc-picard-pipeline}
+\end{figure}
+
+In practice one often adds \emph{damping} for robustness:
+given the undamped update $\tilde x_{1:T}^{(k+1)}$ from \eqref{eq:picard-ula}, set
+\[
+x_{1:T}^{(k+1)}=(1-\omega)x_{1:T}^{(k)}+\omega \tilde x_{1:T}^{(k+1)},
+\qquad \omega\in(0,1].
+\]
+
+\begin{algorithm}[H]
+  \caption{Parallel-in-time Picard iteration for ULA with fixed noise (damped)}
+  \label{alg:parallel-mcmc-picard}
+  \begin{algorithmic}[1]
+    \Require Initial state $x_0$, energy $U$ (with $\nabla U$), step size $\epsilon$, noise $\xi_{1:T}$, initial guess $x_{1:T}^{(0)}$, damping $\omega\in(0,1]$, tolerance $\tau$
+    \Ensure Approximate ULA trajectory $x_{1:T}$
+    \For{$k=0,1,2,\dots$ until convergence}
+      \State For $t=1,\dots,T$ compute $d_t^{(k)} \gets -\epsilon\nabla U(x_{t-1}^{(k)})+\sqrt{2\epsilon}\,\xi_t$ \Comment{all $t$ in parallel}
+      \State Compute $s_t^{(k)} \gets \sum_{i=1}^t d_i^{(k)}$ for all $t$ \Comment{via scan / prefix sum}
+      \State Set $\tilde x_t^{(k+1)} \gets x_0 + s_t^{(k)}$ for all $t$
+      \State Update $x_{1:T}^{(k+1)} \gets (1-\omega)x_{1:T}^{(k)}+\omega \tilde x_{1:T}^{(k+1)}$
+      \If{$\max_{t\in\{1,\dots,T\}} \norm{x_t^{(k+1)}-x_t^{(k)}}_2 \le \tau$}
+        \State \textbf{break}
+      \EndIf
+    \EndFor
+    \State \Return $x_{1:T}^{(k+1)}$
+  \end{algorithmic}
+\end{algorithm}
+
+\begin{figure}[t]
+  \centering
+  \input{figures/handouts/parallel_mcmc/fig_parallel_mcmc_ula_picard_convergence}
+  \caption{Empirical behavior of damped Picard iteration on a one-dimensional ULA example with fixed noise (same example as \Cref{fig:ula-newton-convergence}).
+  Picard uses only increment evaluations and scans, so it is a clean parallel baseline, but it converges linearly and can require many iterations without a good contraction regime.}
+  \label{fig:ula-picard-convergence}
+\end{figure}
+
+\subsubsection{When does Picard converge? why windows help}
+\label{subsubsec:picard-when}
+
+The drawback of \eqref{eq:picard-ula} is that it needs the fixed-point map in \eqref{eq:ula-cumsum-form} to be stable.
+A simple bound explains both why global Picard can be hard for long chains and why sliding windows are a natural practical fix.
+
+\begin{proposition}[A simple contraction bound for Picard on a horizon]
+\label{prop:picard-contraction}
+Assume $\nabla U$ is $L$-Lipschitz on a set containing all states that appear in the Picard iterates.
+Consider the undamped Picard map $\mathcal{P}$ defined by \eqref{eq:picard-ula}, i.e.\ $x^{(k+1)}=\mathcal{P}(x^{(k)})$.
+Then for any two candidate trajectories $x_{1:T}$ and $y_{1:T}$,
+\[
+\max_{t\in\{1,\dots,T\}} \norm{\mathcal{P}(x)_{t}-\mathcal{P}(y)_{t}}_2
+\le \epsilon L T \max_{t\in\{0,\dots,T-1\}} \norm{x_t-y_t}_2,
+\]
+where $x_0=y_0=x_0$ is fixed.
+In particular, if $\epsilon L T<1$ then $\mathcal{P}$ is a contraction (in the max norm) and Picard iteration converges.
+More generally, the same bound with $T$ replaced by a \emph{window length} $p$ shows that Picard is much easier to make contracting on short windows.%
+\end{proposition}
+\begin{proof}
+Fix $t\in\{1,\dots,T\}$.
+The noise terms cancel, so
+\[
+\mathcal{P}(x)_t-\mathcal{P}(y)_t
+=-\epsilon\sum_{s=1}^t \bigl(\nabla U(x_{s-1})-\nabla U(y_{s-1})\bigr).
+\]
+Taking norms and using Lipschitzness gives
+\[
+\norm{\mathcal{P}(x)_t-\mathcal{P}(y)_t}_2
+\le \epsilon\sum_{s=1}^t \norm{\nabla U(x_{s-1})-\nabla U(y_{s-1})}_2
+\le \epsilon L \sum_{s=1}^t \norm{x_{s-1}-y_{s-1}}_2
+\le \epsilon L t \max_{j\in\{0,\dots,T-1\}} \norm{x_j-y_j}_2.
+\]
+Taking the maximum over $t\le T$ yields the claim.%
+\end{proof}
+
+\begin{exercise}[Window length and Picard stability]
+\label{ex:picard-window}
+Assume $\nabla U$ is $L$-Lipschitz on a set containing all states of interest.
+Fix a left boundary value $x_t$ and consider applying Picard iteration only on the next $p$ steps,
+i.e.\ to solve \eqref{eq:ula-cumsum-form} for $(x_{t+1},\dots,x_{t+p})$ while holding $x_t$ fixed.
+\begin{enumerate}[leftmargin=*]
+  \item Show that the corresponding Picard map on this length-$p$ window has Lipschitz constant at most $\epsilon L p$ in the max norm.
+  \item Explain briefly why this suggests a \emph{sliding-window Picard} method for long trajectories, and how scan would be used inside each window.
+\end{enumerate}
+\end{exercise}
+\SolutionBox[14]{%
+\begin{enumerate}[leftmargin=*]
+  \item The windowed Picard map is the same as in \Cref{prop:picard-contraction}, but the sums run only over the next $p$ steps.
+  Repeating the bound in the proof of \Cref{prop:picard-contraction} with $t\le p$ gives
+  \[
+  \max_{j\in\{1,\dots,p\}} \norm{\mathcal{P}_{\mathrm{win}}(x)_{t+j}-\mathcal{P}_{\mathrm{win}}(y)_{t+j}}_2
+  \le \epsilon L p \max_{j\in\{0,\dots,p-1\}} \norm{x_{t+j}-y_{t+j}}_2,
+  \]
+  where $x_t=y_t$ is fixed.
+  \item If $\epsilon L T$ is not small, global Picard may fail to contract over the whole horizon, but the same dynamics can be contracting over shorter horizons.
+  A sliding-window method tries to exploit this by repeatedly running Picard updates on a window of length $p$ and then shifting the window forward once the early part has stabilized.
+  Inside each window, one Picard update still consists of (i) evaluating increments $g_s(x_{s-1})$ in parallel over the window indices, and (ii) integrating them via a prefix sum, i.e.\ a scan.%
+\end{enumerate}
+}
+
+\subsubsection{Sliding-window Picard}
+\label{subsubsec:picard-window}
+
+The window-length bound in \Cref{prop:picard-contraction} suggests a practical way to make Picard useful even when $T$ is large: pick a window length $p$, run one or a few Picard updates on the current window, and slide the window forward once the early part has stabilized.
+Each update still has the same parallel structure as in \Cref{fig:parallel-mcmc-picard-pipeline}: drift evaluations in parallel across the window indices, followed by a scan to form the cumulative sums.
+
+This sliding-window idea is especially natural when the expensive step is evaluating a learned vector field across many time indices.
+In many bridge-based diffusion samplers, batching those per-time evaluations over a short window can yield substantial wall-clock speedups even if the total number of model evaluations increases.
+That is why closely related windowed schemes appear there as well; see \citet[\S3.1]{shih_belkhale_ermon_sadigh_anari_2023_parallel_sampling_diffusion}.%
+
+Picard and Gauss--Newton are two ends of the same story: they are iterative solvers for the same fixed-noise trajectory problem (equivalently, minimizing $\mathcal{L}=\tfrac12\norm{r(x_{1:T})}_2^2$).
+Picard uses only function evaluations (increments) plus scans, but it can require many iterations unless the dynamics are strongly contracting.
+Gauss--Newton uses Jacobians to accelerate convergence when the map is not a contraction.
+We now turn to Gauss--Newton updates on trajectories.
+
+\subsection{Gauss--Newton updates on trajectories}
+\label{subsec:newton-trajectory}
+
+Gauss--Newton uses the same trajectory objective, but each iteration now linearizes the residual and minimizes the local least-squares model for $\mathcal{L}$.
+For ULA this means evaluating drifts and Jacobians, which are Hessians of $U$, and then solving the induced block lower-bidiagonal system with a scan.
+The method is most effective when the transitions are close to affine along the path, and damping is the usual safeguard when they are not.
+
+We now apply a second-order method to the trajectory objective
+\[
+  \mathcal{L}(x_{1:T})=\tfrac12 \norm{r(x_{1:T})}_2^2.
+\]
+Since $\mathcal{L}$ is a nonlinear least-squares objective, a standard choice is the Gauss--Newton method, which minimizes the squared norm of the \emph{linearized} residual; see \Cref{ex:gauss-newton-viewpoint}.
+In our Markovian setting this leads to scan-friendly linear algebra across time.
+
+In our trajectory residual formulation, the map $r:(\R^d)^T\to(\R^d)^T$ is \emph{square}, and its Jacobian is invertible for every trajectory (\Cref{cor:newton-solve-well-defined}).
+As a result, the Gauss--Newton step for minimizing $\mathcal{L}$ is equivalent to Newton's method for the rootfinding problem $r(x_{1:T})=0$ (see \Cref{ex:gauss-newton-viewpoint}).
+We keep the Gauss--Newton language because we think of the method as a least-squares solver, and because the same perspective extends to settings where one uses approximate Jacobians or over/underdetermined residuals.
+
+This is a (structured) nonlinear least-squares problem in $\R^{Td}$.
+It is \emph{not} convex in general: even if $U$ is convex, the squared rollout residual typically introduces nonconvexity because the residual depends nonlinearly on the previous state $x_{t-1}$.
+Convexity holds in the special affine case (equivalently, a quadratic $U$), where the rollout equations are linear in the full trajectory and $\mathcal{L}$ becomes a strongly convex quadratic.
+So, the ``ease'' of the parallel solve should not be thought of as a convexity guarantee.
+Instead, what matters is stability/conditioning of the fixed-noise dynamics along the path and whether the transitions are close to affine on the region the trajectory explores; see \Cref{subsec:when-works,subsec:burnin-stationarity}.
+
+This ``merit function in trajectory space'' is the objective that measures how far a candidate trajectory is from satisfying the rollout equations \eqref{eq:residual-blocks}.
+Although $\mathcal{L}$ lives in $\R^{Td}$, the meaning of the iterates can be very concrete:
+each Gauss--Newton step produces an \emph{entire candidate sample path} $x_{1:T}^{(k)}$.
+To keep the visualization uncluttered, we will illustrate this behavior in one dimension;
+\Cref{fig:ula-newton-convergence} shows the sequential rollout and the first few Gauss--Newton iterates for one fixed noise realization.
+
+We will need the single-step Jacobians $A_t(x)=\frac{\partial f_t}{\partial x}(x)$.
+For ULA, this Jacobian has a simple closed form.
+The next exercise is the same one-line differentiation that underlies Newton's method in the Optimization unit, now applied to a sampler step.
+
+\begin{exercise}[Jacobian for ULA]
+\label{ex:ula-jacobian}
+Assume $U$ is twice differentiable.
+Show that for the ULA update maps $f_t$ from \Cref{def:ula-rollout-fixed-noise},
+\[
+A_t(x)=\frac{\partial f_t}{\partial x}(x) = I_d - \epsilon \Hess U(x).
+\]
+\end{exercise}
+\SolutionBox[10]{%
+For fixed $\xi_t$, the update map is
+\[
+f_t(x)=x-\epsilon\nabla U(x)+\sqrt{2\epsilon}\,\xi_t.
+\]
+The derivative of $x\mapsto x$ is $I_d$.
+The derivative of $x\mapsto -\epsilon\nabla U(x)$ is $-\epsilon\Hess U(x)$.
+The noise term is constant in $x$, so its derivative is $0$.
+Therefore $\frac{\partial f_t}{\partial x}(x)=I_d-\epsilon\Hess U(x)$.%
+}
+
+\begin{theorem}[Gauss--Newton step for the trajectory objective]
+\label{thm:newton-trajectory-step}
+Assume each $f_t$ is differentiable.
+Given a current guess $x_{1:T}^{(k)}$, define
+\[
+A_t^{(k)} := A_t\bigl(x_{t-1}^{(k)}\bigr) \in \R^{d\times d},
+\qquad
+r_t^{(k)} := r_t(x_{1:T}^{(k)}) \in \R^d.
+\]
+Let $\Delta x_{1:T}^{(k)}=(\Delta x_1^{(k)},\dots,\Delta x_T^{(k)})$ be the Gauss--Newton increment, i.e.\ the minimizer of the linearized least-squares model
+\[
+  \min_{\Delta x_{1:T}\in(\R^d)^T} \tfrac12 \norm{r(x_{1:T}^{(k)}) + J(x_{1:T}^{(k)})\,\Delta x_{1:T}}_2^2.
+\]
+Equivalently (since $J(x_{1:T}^{(k)})$ is always invertible by \Cref{cor:newton-solve-well-defined}), $\Delta x_{1:T}^{(k)}$ is the unique solution of
+\[
+J(x_{1:T}^{(k)}) \, \Delta x_{1:T}^{(k)} = -r(x_{1:T}^{(k)}).
+\]
+Then the blocks $\Delta x_t^{(k)} \in \R^d$ satisfy the linear recursion
+\begin{equation}
+  \Delta x_1^{(k)} = -r_1^{(k)},
+  \qquad
+  \Delta x_t^{(k)} = A_t^{(k)} \Delta x_{t-1}^{(k)} - r_t^{(k)}, \quad t=2,\dots,T.
+  \label{eq:newton-linear-recursion}
+\end{equation}
+Moreover, the trajectory update $x_{1:T}^{(k+1)} = x_{1:T}^{(k)} + \Delta x_{1:T}^{(k)}$ can be written equivalently as
+\begin{equation}
+  x_t^{(k+1)} = f_t\!\left(x_{t-1}^{(k)}\right) + A_t^{(k)} \left(x_{t-1}^{(k+1)} - x_{t-1}^{(k)}\right),
+  \quad t=1,\dots,T,
+  \label{eq:newton-trajectory-update}
+\end{equation}
+where we interpret $x_0^{(k+1)}=x_0^{(k)}=x_0$.
+\end{theorem}
+
+\begin{proof}[Proof of \Cref{thm:newton-trajectory-step}]
+By \Cref{prop:jacobian-structure}, $J(x_{1:T}^{(k)})$ is block lower bidiagonal with diagonal blocks $I_d$ and subdiagonal blocks $-A_t^{(k)}$.
+Writing the block system $J\Delta x=-r$ coordinate-wise gives
+\[
+\Delta x_1^{(k)}=-r_1^{(k)},\qquad
+\Delta x_t^{(k)}-A_t^{(k)}\Delta x_{t-1}^{(k)}=-r_t^{(k)},\quad t=2,\dots,T,
+\]
+which rearranges to \eqref{eq:newton-linear-recursion}.
+
+Next, note that $\Delta x_t^{(k)}=x_t^{(k+1)}-x_t^{(k)}$ and $r_t^{(k)}=x_t^{(k)}-f_t(x_{t-1}^{(k)})$.
+For $t\ge 2$, substitute these identities into \eqref{eq:newton-linear-recursion} to get
+\[
+x_t^{(k+1)}-x_t^{(k)}=A_t^{(k)}\bigl(x_{t-1}^{(k+1)}-x_{t-1}^{(k)}\bigr)-\bigl(x_t^{(k)}-f_t(x_{t-1}^{(k)})\bigr),
+\]
+and rearrange to obtain \eqref{eq:newton-trajectory-update}.
+For $t=1$, the same formula holds when we interpret $x_0^{(k+1)}=x_0^{(k)}=x_0$.%
+\end{proof}
+
+Now the scan reappears in a very concrete way.
+Define $\Delta x_0^{(k)}:=0$ and $A_1^{(k)}:=0$.
+Then \eqref{eq:newton-linear-recursion} can be written uniformly as
+\begin{equation}
+  \Delta x_t^{(k)} = A_t^{(k)}\,\Delta x_{t-1}^{(k)} - r_t^{(k)},
+  \qquad t=1,\dots,T,
+  \label{eq:newton-linear-recursion-unified}
+\end{equation}
+which is an affine recursion of the form \eqref{eq:affine-recursion}.
+In other words, \emph{the Gauss--Newton linear solve is itself a rollout problem}, but now for an affine system.
+
+\begin{proposition}[The Gauss--Newton linear solve is a scan over affine maps]
+\label{prop:newton-scan}
+Fix an iteration $k$ and define affine maps $\psi_t^{(k)}:\R^d\to\R^d$ by
+\[
+\psi_t^{(k)}(v) := A_t^{(k)}v - r_t^{(k)},
+\qquad t=1,\dots,T,
+\]
+with $\Delta x_0^{(k)}:=0$.
+Then the Gauss--Newton increment satisfies
+\[
+\Delta x_t^{(k)} = (\psi_t^{(k)}\circ\psi_{t-1}^{(k)}\circ\cdots\circ\psi_1^{(k)})(0),
+\qquad t=1,\dots,T.
+\]
+In particular, computing all $\Delta x_t^{(k)}$ is exactly a scan (prefix composition) over the affine maps $\psi_t^{(k)}$.
+\end{proposition}
+\begin{proof}
+The recursion \eqref{eq:newton-linear-recursion-unified} is exactly $\Delta x_t^{(k)}=\psi_t^{(k)}(\Delta x_{t-1}^{(k)})$ with $\Delta x_0^{(k)}=0$.
+Unrolling the recursion gives the claimed prefix-composition formula.%
+\end{proof}
+
+\Cref{prop:newton-scan} is the clean point where scan enters the parallel-in-time Gauss--Newton method:
+once the local pieces $A_t^{(k)}$ and $r_t^{(k)}$ are available (parallel over $t$), the remaining ``sequential'' part of the step is a scan.
+Equivalently, the linear solve is forward substitution for a block lower-bidiagonal system; a scan is a parallel way to carry out that forward substitution.
+
+\begin{proposition}[Affine transitions are solved in one Gauss--Newton step]
+\label{prop:affine-one-newton-step}
+Assume each transition is affine: $f_t(x)=A_t x+b_t$.
+Then $r(x_{1:T})$ is an affine function of $x_{1:T}$, and one Gauss--Newton step finds the exact rollout from any initial guess $x_{1:T}^{(0)}$.
+\end{proposition}
+
+\begin{proof}
+If each $f_t$ is affine, then each residual block $r_t(x_{1:T})=x_t-f_t(x_{t-1})$ is affine in $(x_{t-1},x_t)$, hence $r$ is affine in $x_{1:T}$.
+Therefore the Jacobian $J(x_{1:T})$ is constant in $x_{1:T}$ and the linearization is exact:
+\[
+r(x_{1:T}^{(0)}+\Delta x)=r(x_{1:T}^{(0)})+J\,\Delta x.
+\]
+The Gauss--Newton step chooses $\Delta x$ to minimize $\norm{r(x_{1:T}^{(0)})+J\Delta x}_2^2$.
+Since $J$ is invertible (\Cref{cor:newton-solve-well-defined}), this minimum is achieved at $r(x_{1:T}^{(0)})+J\Delta x=0$.
+By exact linearization, this gives $r(x_{1:T}^{(1)})=0$, which is the exact rollout by \Cref{prop:residual-correctness}.%
+\end{proof}
+
+The next exercise reconnects this scan-based update to the standard nonlinear least-squares derivation from the optimization side of the course.
+\begin{exercise}[Gauss--Newton viewpoint]
+\label{ex:gauss-newton-viewpoint}
+Consider the merit function $\mathcal{L}(x_{1:T})=\tfrac12 \norm{r(x_{1:T})}_2^2$.
+\begin{enumerate}[leftmargin=*]
+  \item Compute $\nabla \mathcal{L}(x_{1:T})$ in terms of $J(x_{1:T})$ and $r(x_{1:T})$.
+  \item Show that a Gauss--Newton step for minimizing $\mathcal{L}$ solves $(J^\top J)\Delta x = -J^\top r$.
+  \item Use \Cref{cor:newton-solve-well-defined} to show this is equivalent to $J\Delta x=-r$ (i.e.\ the linearized residual can be driven to zero).
+  \item Give one reason you might prefer a damped or line-searched step on $\mathcal{L}$ rather than an undamped Gauss--Newton step, especially when the fixed-noise dynamics are expanding or poorly conditioned.
+\end{enumerate}
+\end{exercise}
+\SolutionBox[18]{%
+\begin{enumerate}[leftmargin=*]
+  \item Let $r=r(x_{1:T})$ and $J=J(x_{1:T})$.
+  Using the chain rule for $\mathcal{L}(x)=\tfrac12 \ip{r(x),r(x)}$ gives
+  \[
+    \nabla \mathcal{L}(x_{1:T}) = J(x_{1:T})^\top r(x_{1:T}).
+  \]
+  \item A Gauss--Newton step minimizes the linearized least-squares model
+  \[
+    \min_{\Delta x}\ \tfrac12\norm{r(x_{1:T})+J(x_{1:T})\,\Delta x}_2^2.
+  \]
+  Differentiating with respect to $\Delta x$ gives the normal equations
+  \[
+    J(x_{1:T})^\top\!\bigl(r(x_{1:T})+J(x_{1:T})\,\Delta x\bigr)=0,
+  \]
+  i.e.\ $(J^\top J)\Delta x=-J^\top r$.
+  \item By \Cref{cor:newton-solve-well-defined}, $J$ is invertible, hence so is $J^\top$.
+  Left-multiplying $(J^\top J)\Delta x=-J^\top r$ by $J^{-\top}$ yields $J\Delta x=-r$.
+  Equivalently, the linearized residual $r+J\Delta x$ can be made exactly zero in one Gauss--Newton step.
+  \item Undamped Gauss--Newton steps can diverge far from a solution (the linear model for $r$ may be inaccurate).
+  Minimizing $\mathcal{L}$ with damping/backtracking is often more robust because it enforces descent in $\mathcal{L}$, providing a safeguard when the local linearization is poor.%
+\end{enumerate}
+}
+
+\subsection{Putting it together: parallel Gauss--Newton rollout for ULA}
+\label{subsec:algorithm}
+
+We can now combine the pieces.
+Each Gauss--Newton iteration requires:
+\begin{enumerate}[leftmargin=*]
+  \item computing $f_t(x_{t-1}^{(k)})$, $A_t^{(k)}$, and $r_t^{(k)}$ for all $t$ (parallel across $t$), and
+  \item solving the affine recursion \eqref{eq:newton-linear-recursion} for $\Delta x_t^{(k)}$ (parallel across $t$ via scan).
+\end{enumerate}
+  \Cref{fig:parallel-mcmc-newton-pipeline} shows this pipeline schematically.
+
+\begin{figure}[t]
+  \centering
+  \resizebox{\linewidth}{!}{\input{figures/handouts/parallel_mcmc/fig_parallel_mcmc_newton_pipeline}}
+  \caption{One Gauss--Newton iteration on the full trajectory: local residual/Jacobian evaluations parallel across time, followed by a scan-based solve of the induced linear recursion and an (optionally damped) trajectory update.}
+  \label{fig:parallel-mcmc-newton-pipeline}
+\end{figure}
+
+\begin{algorithm}[H]
+  \caption{Parallel-in-time Gauss--Newton rollout for ULA with fixed noise}
+  \label{alg:parallel-mcmc-newton}
+  \begin{algorithmic}[1]
+    \Require Initial state $x_0$, energy $U$ (with $\nabla U$ and $\Hess U$), step size $\epsilon$, noise $\xi_{1:T}$, initial guess $x_{1:T}^{(0)}$, tolerance $\varepsilon$
+    \Ensure Approximate ULA trajectory $x_{1:T}$
+    \For{$k=0,1,2,\dots$ until convergence}
+      \State Compute $r_1^{(k)} \gets x_1^{(k)} - \bigl(x_0-\epsilon\nabla U(x_0)+\sqrt{2\epsilon}\,\xi_1\bigr)$
+      \State For $t=2,\dots,T$ compute $r_t^{(k)} \gets x_t^{(k)} - \bigl(x_{t-1}^{(k)}-\epsilon\nabla U(x_{t-1}^{(k)})+\sqrt{2\epsilon}\,\xi_t\bigr)$ \Comment{all $t$ in parallel}
+      \State For $t=2,\dots,T$ compute $A_t^{(k)} \gets I_d-\epsilon \Hess U(x_{t-1}^{(k)})$ \Comment{all $t$ in parallel}
+      \State Solve $\Delta x_{1:T}^{(k)}$ from \eqref{eq:newton-linear-recursion} \Comment{via parallel scan}
+      \State Update $x_{1:T}^{(k+1)} \gets x_{1:T}^{(k)} + \Delta x_{1:T}^{(k)}$ \Comment{optionally damped}
+      \If{$\norm{r(x_{1:T}^{(k+1)})}_2 \le \varepsilon$}
+        \State \textbf{break}
+      \EndIf
+    \EndFor
+    \State \Return $x_{1:T}^{(k+1)}$
+  \end{algorithmic}
+\end{algorithm}
+
+As with ordinary Newton-type methods, one often adds \emph{damping} for robustness: instead of taking the full step
+$x_{1:T}^{(k+1)}=x_{1:T}^{(k)}+\Delta x_{1:T}^{(k)}$,
+use
+\[
+x_{1:T}^{(k+1)}=x_{1:T}^{(k)}+\eta^{(k)}\Delta x_{1:T}^{(k)},
+\qquad \eta^{(k)}\in(0,1],
+\]
+with $\eta^{(k)}$ chosen (for example) by backtracking line search on the merit function
+$\mathcal{L}(x_{1:T})=\tfrac12 \norm{r(x_{1:T})}_2^2$.
+This is the same damping/backtracking idea used for Newton updates in the Optimization unit.
+
+\begin{proposition}[Why convergence implies correctness]
+\label{prop:converge-correct}
+If \Cref{alg:parallel-mcmc-newton} terminates at a trajectory $\hat{x}_{1:T}$ with $r(\hat{x}_{1:T})=0$, then $\hat{x}_{1:T}$ is exactly the sequential rollout of \eqref{eq:rollout-recursion} for the same initial state $x_0$ and the same randomness $(\xi_t)_{t=1}^T$.
+\end{proposition}
+
+\begin{proof}
+If $r(\hat{x}_{1:T})=0$, then \Cref{prop:residual-correctness} implies $\hat{x}_{1:T}$ satisfies the recursion \eqref{eq:rollout-recursion}.
+That recursion uniquely determines the sequential rollout.
+\end{proof}
+
+Even though the method is solving a problem in $\R^{Td}$, its behavior can be very tangible.
+\Cref{fig:ula-newton-convergence} shows a one-dimensional ULA example in which we fix the noise $\xi_{1:T}$, start from a crude initial guess, and watch the Gauss--Newton iterates rapidly converge to the sequential rollout.
+
+\begin{figure}[t]
+  \centering
+  \input{figures/handouts/parallel_mcmc/fig_parallel_mcmc_ula_newton_convergence}
+  \caption{Empirical behavior of the parallel Gauss--Newton rollout on a one-dimensional ULA example with fixed noise.
+  Starting from a crude initial guess, the Gauss--Newton iterates $x_{1:T}^{(k)}$ quickly match the sequential rollout, and the residual norm $\norm{r(x_{1:T}^{(k)})}_2$ drops rapidly.}
+  \label{fig:ula-newton-convergence}
+\end{figure}
+
+\subsection{When do parallel-in-time trajectory solvers work well?}
+\label{subsec:when-works}
+
+The parallel-in-time viewpoint gives a family of methods.
+We fix the randomness and pose trajectory computation as either the rootfinding problem $r(x_{1:T})=0$ or the nonlinear least-squares problem
+\[
+  \mathcal{L}(x_{1:T})=\tfrac12\norm{r(x_{1:T})}_2^2.
+\]
+By \Cref{prop:unique-rollout-and-geometry}, this objective has a unique global minimizer and a unique stationary point (the exact sequential sample path for that fixed randomness).
+So the global difficulty is not multiple basins, but whether a particular iterative method converges quickly and stably.
+What can go wrong is divergence, oscillation, or very slow progress.
+
+Stability and contractivity matter in two related ways: they control how errors propagate along the rollout, and they control whether a particular iterative scheme has a large basin of attraction.
+
+\begin{proposition}[From residual tolerance to path accuracy]
+\label{prop:residual-to-path}
+Fix $x_0$ and maps $f_{1:T}$.
+Let $x^\star_{1:T}$ denote the exact rollout and let $\hat x_{1:T}$ be any candidate trajectory.
+Define the residual blocks $\delta_t := r_t(\hat x_{1:T})$.
+Assume each $f_t$ is $L_t$-Lipschitz on a set containing both trajectories.
+Then for every $t$,
+\[
+\norm{\hat x_t-x_t^\star}_2
+\le \sum_{s=1}^t \left(\prod_{j=s+1}^t L_j\right)\norm{\delta_s}_2,
+\]
+with the convention that an empty product is $1$.
+In particular, when the products $\prod_{j=s+1}^t L_j$ stay moderate (a stable/contracting regime), a small residual implies a small path error, whereas in an expanding regime one may need a much tighter residual tolerance to recover the same path accuracy.%
+\end{proposition}
+\begin{proof}
+The residual definition says $\hat x_1=f_1(x_0)+\delta_1$ and $\hat x_t=f_t(\hat x_{t-1})+\delta_t$ for $t\ge 2$.
+Subtracting the exact rollout $x_t^\star=f_t(x_{t-1}^\star)$ gives
+\[
+\hat x_1-x_1^\star=\delta_1,\qquad
+\hat x_t-x_t^\star = f_t(\hat x_{t-1})-f_t(x_{t-1}^\star)+\delta_t.
+\]
+Taking norms and using Lipschitzness yields
+\[
+\norm{\hat x_t-x_t^\star}_2 \le L_t \norm{\hat x_{t-1}-x_{t-1}^\star}_2 + \norm{\delta_t}_2.
+\]
+Unrolling this recursion gives the stated bound.%
+\end{proof}
+
+The bounds in \Cref{prop:residual-to-path,prop:newton-amplification} show that the same local stability factors govern both how accurately a small-residual trajectory matches the true rollout and how sensitive the Gauss--Newton linear solve is to residuals early in time.
+\Cref{fig:parallel-mcmc-trajectory-landscape} gives a visual complement by plotting two-dimensional slices of the high-dimensional merit function $\mathcal{L}(x_{1:T})=\tfrac12\|r(x_{1:T})\|_2^2$ near the true path.
+Concretely, we visualize the surface
+\[
+\mathcal{L}\!\left(x^\star_{1:T}+\alpha v_{\min}+\beta v_{\max}\right),
+\]
+where $v_{\min}$ and $v_{\max}$ are the flattest/steepest directions of the quadratic model $J^\top J$ at $x^\star$.
+In a stable regime, the basin looks comparatively round; in an expanding regime, it becomes long and thin, reflecting ill-conditioning of the trajectory equations.
+
+\begin{figure}[t]
+  \centering
+  \input{figures/handouts/parallel_mcmc/fig_parallel_mcmc_trajectory_landscape_projection}
+  \caption{Two-dimensional slices of the trajectory-space merit function near the exact fixed-noise trajectory.
+  The red X marks the exact path $(\alpha,\beta)=(0,0)$.
+  Stable dynamics yield a comparatively well-conditioned basin (left), while local expansion along the path yields a thin, ill-conditioned basin (right).}
+  \label{fig:parallel-mcmc-trajectory-landscape}
+\end{figure}
+
+The same stability factors that appear in \Cref{prop:residual-to-path,prop:newton-amplification} also control the practical difficulty of the trajectory solve: stable dynamics lead to well-conditioned parallel-in-time updates, while expanding dynamics amplify errors and can shrink the basin of attraction of iterative methods.
+For ULA, strong log-concavity gives an especially clean globally contractive regime.
+
+\begin{proposition}[A globally contractive regime for the ULA step]
+\label{prop:ula-contracting-regime}
+Assume $U$ is twice differentiable and there exist constants $0<m\le L$ such that
+\[
+m I_d \preceq \Hess U(x) \preceq L I_d \qquad \text{for all } x\in\R^d.
+\]
+Fix a noise realization $\xi_t$ and consider the corresponding ULA transition map
+\[
+f_t(x)=x-\epsilon\nabla U(x)+\sqrt{2\epsilon}\,\xi_t.
+\]
+If $0<\epsilon<2/L$, then for all $x,y\in\R^d$,
+\[
+\norm{f_t(x)-f_t(y)}_2 \le \rho \norm{x-y}_2,
+\qquad \rho := \max\{|1-\epsilon m|,\; |1-\epsilon L|\} < 1.
+\]
+Consequently, two rollouts with the same noise satisfy
+\[
+\norm{x_t-x'_t}_2 \le \rho^t \norm{x_0-x_0'}_2,
+\]
+and the stability factors in \Cref{prop:residual-to-path,prop:newton-amplification} decay geometrically.
+
+Moreover, equip trajectories with the max norm $\norm{x_{1:T}}_\infty:=\max_{t\in\{1,\dots,T\}}\norm{x_t}_2$.
+Then the trajectory map $\mathcal{T}$ from \Cref{subsec:fixed-point} is a contraction:
+for all $x_{1:T},y_{1:T}\in(\R^d)^T$,
+\[
+\norm{\mathcal{T}(x_{1:T})-\mathcal{T}(y_{1:T})}_\infty \le \rho \norm{x_{1:T}-y_{1:T}}_\infty.
+\]
+In particular, the fixed-point iteration $x_{1:T}^{(k+1)}=\mathcal{T}(x_{1:T}^{(k)})$ converges from any initialization at rate $\rho$.%
+\end{proposition}
+\begin{proof}
+For fixed $\xi_t$, the Jacobian of $f_t$ is $I_d-\epsilon \Hess U(x)$.
+The Hessian bounds imply all eigenvalues of $\Hess U(x)$ lie in $[m,L]$, hence all eigenvalues of $I_d-\epsilon \Hess U(x)$ lie in $[1-\epsilon L,\,1-\epsilon m]$.
+Therefore,
+\[
+\norm{I_d-\epsilon \Hess U(x)}_{\mathrm{op}}
+= \max_{\lambda\in[m,L]} |1-\epsilon\lambda|
+= \max\{|1-\epsilon m|,|1-\epsilon L|\}
+= \rho.
+\]
+Using the mean value theorem and the uniform bound on the Jacobian gives $\norm{f_t(x)-f_t(y)}_2\le \rho \norm{x-y}_2$.
+Iterating this Lipschitz bound along the recursion yields $\norm{x_t-x'_t}_2\le \rho^t \norm{x_0-x_0'}_2$.
+
+For the trajectory map $\mathcal{T}$, note that $(\mathcal{T}(x))_1=f_1(x_0)$ does not depend on $x_{1:T}$, so the difference at $t=1$ is $0$.
+For $t\ge 2$,
+\[
+\norm{(\mathcal{T}(x))_t-(\mathcal{T}(y))_t}_2
+=\norm{f_t(x_{t-1})-f_t(y_{t-1})}_2
+\le \rho \norm{x_{t-1}-y_{t-1}}_2
+\le \rho \norm{x_{1:T}-y_{1:T}}_\infty.
+\]
+Taking the maximum over $t$ gives $\norm{\mathcal{T}(x)-\mathcal{T}(y)}_\infty\le \rho \norm{x-y}_\infty$.
+If $x^\star$ is the fixed point, then
+\[
+\norm{x^{(k+1)}-x^\star}_\infty
+=\norm{\mathcal{T}(x^{(k)})-\mathcal{T}(x^\star)}_\infty
+\le \rho \norm{x^{(k)}-x^\star}_\infty,
+\]
+so $\norm{x^{(k)}-x^\star}_\infty\le \rho^k\norm{x^{(0)}-x^\star}_\infty$.
+The remaining statements follow by substituting $L_j\le \rho$ (or $\alpha_j\le \rho$) into \Cref{prop:residual-to-path,prop:newton-amplification}.%
+\end{proof}
+
+There are multiple equivalent fixed-point formulations for the same fixed-noise trajectory, and contractivity can depend on which one we iterate.
+The contraction in \Cref{prop:ula-contracting-regime} is for the original rollout map $\mathcal{T}$.
+By contrast, the scan-friendly cumulative-sum Picard map for ULA in \eqref{eq:picard-ula} has a sufficient contraction condition that scales with the horizon length (roughly $\epsilon L T$ in \Cref{prop:picard-contraction}), which is why windowing can still be useful for long chains even when the local dynamics are stable.%
+
+The next exercise is exactly the same conditioning calculation as for gradient descent, now applied to the ULA transition map.
+\begin{exercise}[Strong convexity and step-size: checking contractivity]
+\label{ex:ula-contractive-step}
+Assume $U$ is twice differentiable and $m I_d \preceq \Hess U(x) \preceq L I_d$ for all $x\in\R^d$.
+Fix $0<\epsilon<2/L$ and define $f(x)=x-\epsilon\nabla U(x)+c$ for an arbitrary constant vector $c\in\R^d$.
+\begin{enumerate}[leftmargin=*]
+  \item Show that $f$ is $\rho$-Lipschitz in the Euclidean norm with $\rho=\max\{|1-\epsilon m|,|1-\epsilon L|\}$.
+  \item For the choice $\epsilon=1/L$, what is $\rho$? What happens as $m/L\to 0$?
+  \item In one sentence, interpret this in terms of the ``easy'' (contracting) versus ``hard'' (near-expanding) regimes for parallel-in-time trajectory solvers.
+\end{enumerate}
+\end{exercise}
+\SolutionBox[14]{%
+\begin{enumerate}[leftmargin=*]
+  \item The Jacobian is $Df(x)=I_d-\epsilon \Hess U(x)$.
+  Since the Hessian eigenvalues lie in $[m,L]$, the eigenvalues of $Df(x)$ lie in $[1-\epsilon L,\,1-\epsilon m]$, so
+  \[
+    \norm{Df(x)}_{\mathrm{op}}
+    =\max_{\lambda\in[m,L]}|1-\epsilon\lambda|
+    =\max\{|1-\epsilon m|,|1-\epsilon L|\}
+    =\rho.
+  \]
+  The mean value theorem then yields $\norm{f(x)-f(y)}_2\le \rho\norm{x-y}_2$ for all $x,y$.
+  \item If $\epsilon=1/L$, then $\rho=\max\{1-m/L,\;|0|\}=1-m/L$.
+  As $m/L\to 0$, we have $\rho\to 1$, meaning the step becomes only weakly contractive (nearly nonexpansive) and perturbations decay very slowly.
+  \item When the dynamics are strongly contractive (small $\rho$), errors do not amplify across time and both Picard and Gauss--Newton iterations tend to have large basins and behave robustly; when the map is near-expansive ($\rho\approx 1$) or expansive, errors can propagate and the trajectory solve can require damping/windows and many more iterations.%
+\end{enumerate}
+}
+
+At a high level, the wall-clock speed comes from two facts.
+For both Picard and Gauss--Newton, the expensive local quantities are computed for all $t$ in parallel, and the remaining coupling across time reduces to a scan with $\mathcal{O}(\log T)$ depth.
+Picard updates are cheap but converge only linearly, while Gauss--Newton updates cost more per iteration but can converge in very few steps when the chain is close to affine along the path.
+
+\subsubsection{Picard: contraction, damping, and windows}
+\label{subsubsec:when-works-picard}
+
+Picard iteration is the most direct fixed-point method applied to sampling: iterate the trajectory map until it stabilizes.
+For ULA we wrote this explicitly in \eqref{eq:picard-ula}.
+
+The core requirement is contraction.
+\Cref{prop:picard-contraction} gives a simple sufficient condition for global convergence on a horizon of length $T$, and it also explains the main practical lever: reduce the effective horizon.
+If $\epsilon L T$ is not small, global Picard can be unstable, but the same dynamics may be stable on a shorter window of length $p$, which is why sliding-window Picard is natural.
+
+Damping plays the same role as in optimization: the relaxation $x^{(k+1)}\gets (1-\omega)x^{(k)}+\omega \tilde x^{(k+1)}$ can turn a borderline-stable iteration into a convergent one, at the cost of more iterations.
+
+\subsubsection{First-order optimization on \texorpdfstring{$\mathcal{L}$}{L}: a clean rate in the quadratic case}
+\label{subsubsec:when-works-gd}
+
+Picard is not the only first-order-style approach.
+We can also apply standard optimization methods directly to the trajectory objective $\mathcal{L}(x_{1:T})=\tfrac12\norm{r(x_{1:T})}_2^2$.
+In general $\mathcal{L}$ is nonconvex (as discussed in \Cref{subsec:newton-trajectory}), but in the quadratic ULA warm-up (\Cref{subsec:warmup-affine}) it becomes a strongly convex quadratic, so gradient descent admits a transparent convergence-rate calculation.
+
+\begin{proposition}[Gradient descent on the trajectory objective in the affine case]
+\label{prop:gd-affine-rate}
+Assume the residual is affine, $r(x)=Jx-c$, where $J\in\R^{Td\times Td}$ is invertible and $c\in\R^{Td}$.
+Define $\mathcal{L}(x)=\tfrac12\norm{Jx-c}_2^2$ and let $x^\star=J^{-1}c$.
+Let $H:=\Hess\mathcal{L}=J^\top J$ and define $\mu:=\lambda_{\min}(H)>0$ and $M:=\lambda_{\max}(H)$.
+Then gradient descent with step size $\alpha=1/M$,
+\[
+x^{(k+1)} = x^{(k)} - \alpha \nabla \mathcal{L}(x^{(k)}),
+\]
+satisfies, for all $k\ge 0$,
+\[
+\mathcal{L}(x^{(k)}) \le \left(1-\frac{\mu}{M}\right)^k \mathcal{L}(x^{(0)}).
+\]
+In particular, to reduce the objective by a factor $\delta\in(0,1)$ it suffices to take
+\[
+k \;\ge\; \frac{M}{\mu}\log\!\left(\frac{1}{\delta}\right)
+\;=\; \kappa(H)\log\!\left(\frac{1}{\delta}\right),
+\]
+where $\kappa(H)=M/\mu$ is the condition number of the quadratic model.
+\end{proposition}
+\begin{proof}
+Since $r(x)=Jx-c$ is affine,
+\[
+\nabla \mathcal{L}(x) = J^\top(Jx-c)=H(x-x^\star),
+\]
+so $\mathcal{L}(x)=\tfrac12 (x-x^\star)^\top H(x-x^\star)$ is a $\mu$-strongly convex, $M$-smooth quadratic.
+The standard gradient-descent rate for strongly convex, smooth functions gives $\mathcal{L}(x^{(k)})\le (1-\mu/M)^k \mathcal{L}(x^{(0)})$.
+Solving $(1-\mu/M)^k\le \delta$ yields the iteration bound.%
+\end{proof}
+
+In the quadratic ULA setting, \Cref{prop:affine-one-newton-step} shows that Gauss--Newton solves the same affine trajectory equations in \emph{one} iteration (just as Newton solves quadratic objectives in one step).
+\Cref{prop:gd-affine-rate} is therefore the classic ``gradient descent versus Newton'' tradeoff, but now in trajectory space:
+first-order methods can require $\mathcal{O}(\kappa)$ iterations, while the scan-based linear solve in Gauss--Newton can remove that dependence at the cost of more per-iteration work.
+
+From a parallelism perspective, when $r(x)=Jx-c$ is affine and $J$ is block bidiagonal (as in our rollout residual), one gradient-descent iteration is highly parallel across time: each residual block depends only on $(x_{t-1},x_t)$, and each gradient block depends only on neighboring residuals.
+So with sufficient parallelism, one GD step has $\mathcal{O}(1)$ depth after computing any needed per-time Jacobians.
+By contrast, the scan-based primitives in Picard and Gauss--Newton have $\mathcal{O}(\log T)$ depth per iteration.
+The wall-clock advantage therefore depends on iteration count: sequential rollout takes $\mathcal{O}(T)$ time, while a $K$-iteration scan-based trajectory solver costs roughly $\mathcal{O}(K\log T)$ parallel rounds.%
+
+\subsubsection{Second-order (Gauss--Newton): mild nonlinearity and good local models}
+\label{subsubsec:when-works-newton}
+
+Gauss--Newton is the natural ``Newton-like'' method for the trajectory objective $\mathcal{L}=\tfrac12\norm{r}_2^2$:
+it repeatedly builds a local linear model for the residual $r$ and uses that model to propose an update of the entire trajectory.
+The mental model is \Cref{prop:affine-one-newton-step}:
+if the transitions are affine, one Gauss--Newton step solves the trajectory equations from any initialization.
+For nonlinear transitions, Gauss--Newton repeatedly linearizes each step around the current trajectory guess, so it works best when the chain is \emph{close to affine} on the region explored by the path.
+
+\begin{proposition}[Local quadratic convergence of undamped Gauss--Newton in a basin]
+\label{prop:gauss-newton-quadratic}
+Let $r:\R^{Td}\to\R^{Td}$ be continuously differentiable and suppose $x^\star\in\R^{Td}$ satisfies $r(x^\star)=0$.
+Assume there is a radius $\rho>0$ such that on the closed ball $B(x^\star,\rho)$ the Jacobian $J(x):=Dr(x)$ is $L_J$-Lipschitz and invertible with
+\[
+  \norm{J(x)^{-1}}_{\mathrm{op}} \le M.
+\]
+Consider the undamped Gauss--Newton iteration
+\[
+  x^{(k+1)} = x^{(k)} - J(x^{(k)})^{-1} r(x^{(k)}).
+\]
+If $\norm{x^{(0)}-x^\star}_2 \le \min\{\rho,\,1/(L_J M)\}$, then the iterates are well-defined, remain in $B(x^\star,\rho)$, and satisfy the quadratic bound
+\[
+  \norm{x^{(k+1)}-x^\star}_2 \le \frac{L_J M}{2}\norm{x^{(k)}-x^\star}_2^2
+  \qquad\text{for all }k\ge 0.
+\]
+In particular, once the iteration enters this basin, convergence is quadratic.
+\end{proposition}
+\begin{proof}
+Fix $k$ and write $e:=x^{(k)}-x^\star$.
+By the fundamental theorem of calculus,
+\[
+r(x^{(k)})-r(x^\star)=\int_0^1 J(x^\star+\tau e)\,e\,d\tau.
+\]
+Subtracting $J(x^{(k)})e$ and using Lipschitzness of $J$ gives
+\[
+\norm{r(x^{(k)})-r(x^\star)-J(x^{(k)})e}_2
+\le \int_0^1 \norm{J(x^\star+\tau e)-J(x^{(k)})}_{\mathrm{op}}\,\norm{e}_2\,d\tau
+\le \int_0^1 L_J(1-\tau)\,\norm{e}_2^2\,d\tau
+=\frac{L_J}{2}\norm{e}_2^2.
+\]
+Since $r(x^\star)=0$, the Gauss--Newton update gives
+\[
+x^{(k+1)}-x^\star
+  = x^{(k)}-x^\star - J(x^{(k)})^{-1}\bigl(r(x^{(k)})-r(x^\star)\bigr)
+  = -J(x^{(k)})^{-1}\!\bigl(r(x^{(k)})-r(x^\star)-J(x^{(k)})e\bigr).
+\]
+Taking norms and using $\norm{J(x^{(k)})^{-1}}_{\mathrm{op}}\le M$ yields
+\[
+\norm{x^{(k+1)}-x^\star}_2 \le \frac{L_JM}{2}\norm{x^{(k)}-x^\star}_2^2.
+\]
+If $\norm{x^{(0)}-x^\star}_2\le \min\{\rho,1/(L_JM)\}$, then $x^{(0)}\in B(x^\star,\rho)$ and the first Newton step is well-defined.
+The bound implies $\norm{x^{(1)}-x^\star}_2\le 1/(2L_JM)\le \rho$.
+Inductively, if $x^{(k)}\in B(x^\star,\rho)$ and $\norm{x^{(k)}-x^\star}_2\le 1/(L_JM)$, then the next step is well-defined and again satisfies $\norm{x^{(k+1)}-x^\star}_2\le 1/(2L_JM)\le \rho$, so all iterates remain in the ball where the assumptions hold.%
+\end{proof}
+
+For ULA, a few recurring ``good'' conditions are worth keeping in mind.
+When $U$ is twice differentiable, the step Jacobians exist and are easy to write down; \Cref{ex:ula-jacobian} gives $A_t^{(k)}=I_d-\epsilon \Hess U(x_{t-1}^{(k)})$.
+If $U$ is close to quadratic on the region explored by the trajectory, then the linearizations are accurate and Gauss--Newton converges quickly.
+A practical proxy is that smaller $\epsilon$ makes each step closer to ``identity plus a small perturbation,'' which typically improves the stability of the linear solve.
+Because Gauss--Newton is local, a reasonable initial trajectory also matters.
+Starting from a crude guess such as $x_t^{(0)}\equiv x_0$ can work, as in \Cref{fig:ula-newton-convergence}, but warm starts usually reduce the iteration count.
+When a full step overshoots, a line search on $\mathcal{L}(x_{1:T})=\tfrac12\norm{r(x_{1:T})}_2^2$ can enforce progress and stabilize convergence.
+
+Stability still matters for Gauss--Newton:
+the linear solve is a forward recursion, so large ``expansion factors'' can amplify early-time errors (and make steps sensitive); see \Cref{prop:newton-amplification}.
+
+\begin{proposition}[Amplification in the Gauss--Newton linear solve]
+\label{prop:newton-amplification}
+Fix an iteration $k$ and consider the recursion \eqref{eq:newton-linear-recursion}.
+Assume $\norm{A_t^{(k)}}_{\mathrm{op}}\le \alpha_t$ for $t=2,\dots,T$.
+Then the Gauss--Newton increment satisfies, for each $t$,
+\[
+\norm{\Delta x_t^{(k)}}_2
+\le \sum_{s=1}^t \left(\prod_{j=s+1}^t \alpha_j\right)\norm{r_s^{(k)}}_2,
+\]
+with the convention that an empty product is $1$.
+In particular, if products of the form $\prod_{j=s+1}^t \alpha_j$ are large, small residuals early in time can induce large changes later in the path, making the step sensitive and potentially requiring damping.%
+\end{proposition}
+\begin{proof}
+For $t=1$, $\Delta x_1^{(k)}=-r_1^{(k)}$.
+For $t\ge 2$, unrolling \eqref{eq:newton-linear-recursion} gives
+\[
+\Delta x_t^{(k)}
+=-r_t^{(k)}-A_t^{(k)}r_{t-1}^{(k)}-\cdots-\left(A_t^{(k)}A_{t-1}^{(k)}\cdots A_2^{(k)}\right)r_1^{(k)}.
+\]
+Taking norms and using submultiplicativity, $\norm{A_j^{(k)}}_{\mathrm{op}}\le \alpha_j$, yields the stated bound.%
+\end{proof}
+
+\subsubsection{Picard vs Gauss--Newton: a systematic comparison}
+\label{subsubsec:picard-vs-newton}
+
+Both methods compute the \emph{same} fixed-noise trajectory when they converge.
+The difference is how they trade off per-iteration work against iteration count.
+The table below summarizes the main points in the ULA setting.
+
+\begin{center}
+\small
+\setlength{\tabcolsep}{4pt}
+\renewcommand{\arraystretch}{1.25}
+\begin{tabular}{@{}p{0.21\linewidth} p{0.37\linewidth} p{0.37\linewidth}@{}}
+\toprule
+& \textbf{Picard iteration} & \textbf{Gauss--Newton} \\
+\midrule
+What is iterated?
+& Picard fixed-point iteration on the trajectory equations (for ULA, \eqref{eq:picard-ula})
+& Newton/Gauss--Newton updates for solving $r(x_{1:T})=0$ (equivalently, minimizing $\mathcal{L}(x_{1:T})=\tfrac12\|r(x_{1:T})\|_2^2$) \\
+Per-iter ingredients
+& Drift / increment evaluations (e.g.\ $\nabla U$)
+& Drift + Jacobians (for ULA, $\Hess U$) \\
+Parallel primitive
+& Prefix-sum scan to integrate increments (ULA)
+& Scan-based solve of a block bidiagonal linear system \\
+Convergence type
+& Linear; needs contraction (or damping / windows)
+& Fast local convergence when the model is accurate; may need damping \\
+Main failure mode
+& Divergence or very slow progress when the map is not contracting over the horizon
+& Overshoot / poor linear model far from the solution; sensitivity when expansion factors are large \\
+Typical fixes
+& Smaller windows $p$, damping $\omega$, smaller step size $\epsilon$
+& Warm starts, line search/damping, smaller step size $\epsilon$ \\
+When to prefer
+& Derivatives unavailable or drift evaluations are very cheap and dynamics are stable
+& Derivatives available and transitions are close to affine along the path (few iterations) \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Finally, this comparison extends beyond ULA.
+For a general differentiable transition $f_t$, Picard iteration is still the generic fixed-point iteration $x^{(k+1)}=\mathcal{T}(x^{(k)})$ (with all $f_t(x_{t-1}^{(k)})$ computable in parallel),
+and Gauss--Newton still uses the Jacobian structure of the residual to build scan-friendly linear solves.
+When the transition is not differentiable (e.g.\ accept/reject), the fixed-point viewpoint still provides structure, but Gauss--Newton-style updates require additional approximations.
+
+\subsection{Extensions beyond ULA}
+\label{subsec:extensions}
+
+The setup in \Cref{subsec:fixed-point} was to fix the randomness and view the resulting chain as the solution of a deterministic rollout recursion \eqref{eq:general-rollout}.
+That viewpoint is not special to ULA.
+We briefly sketch a few other cases without changing the core story.
+
+The same caution about convexity applies here too: once the randomness is fixed, we can still write a trajectory residual and a least-squares objective in trajectory space, but for more complex transitions those objectives are typically nonconvex and may be nonsmooth, for example because of accept/reject steps.
+The point of the rollout viewpoint is structure, not a promise that sampling has become a convex optimization problem.
+
+\begin{definition}[Reparameterized transition map]
+\label{def:reparam-transition}
+Fix a distribution $\mu$ on an auxiliary randomness space and a measurable map
+\[
+F:\R^d \times \Xi \to \R^d.
+\]
+Given i.i.d.\ random variables $\xi_1,\dots,\xi_T \sim \mu$ and an initial state $x_0$, define $f_t(\cdot):=F(\cdot,\xi_t)$.
+Then the chain is the unique sequence satisfying the rollout recursion \eqref{eq:rollout-recursion}.
+\end{definition}
+
+Examples follow the same pattern.
+Reparameterized Gibbs sampling writes each conditional draw as a deterministic function of a fresh uniform or Gaussian variable, for example through inverse-CDF sampling.
+SGLD replaces $\nabla U$ in ULA by a stochastic gradient estimator, but conditional on the minibatch randomness and Gaussian noise the update is still a deterministic recursion.
+Metropolis-corrected chains include the uniform random variable used for accept/reject; the update is still a deterministic map of the current state and the random inputs, but it is no longer differentiable.
+
+\subsubsection{Reparameterizing a Gibbs update via inverse CDF}
+\label{subsubsec:reparam-gibbs}
+
+\begin{exercise}[Inverse-CDF sampling]
+\label{ex:reparam-gibbs}
+Consider a one-dimensional conditional distribution with CDF $G(\,\cdot \mid \text{rest})$.
+Define the generalized inverse by
+\[
+G^{-1}(u\mid \text{rest}) := \inf\{x\in\R: G(x\mid \text{rest})\ge u\}.
+\]
+Show that if $U\sim\mathrm{Unif}(0,1)$ and $X=G^{-1}(U\mid \text{rest})$, then $X$ has the desired conditional distribution.
+Explain briefly how this turns a Gibbs sweep into a rollout of the form \eqref{eq:rollout-recursion}.
+\end{exercise}
+\SolutionBox[12]{%
+Let $G(\cdot\mid\text{rest})$ be a conditional CDF and define the generalized inverse
+\[
+G^{-1}(u\mid \text{rest}) := \inf\{x\in\R: G(x\mid \text{rest})\ge u\}.
+\]
+Set $X:=G^{-1}(U\mid\text{rest})$ with $U\sim\mathrm{Unif}(0,1)$ independent of $\text{rest}$.
+For any $x$, the defining property of the generalized inverse gives
+\[
+\{X\le x\}
+\iff \{G^{-1}(U\mid\text{rest})\le x\}
+\iff \{U\le G(x\mid\text{rest})\}.
+\]
+Taking conditional probabilities given $\text{rest}$ yields
+\[
+\mathbb{P}(X\le x\mid\text{rest})
+=\mathbb{P}(U\le G(x\mid\text{rest})\mid\text{rest})
+=G(x\mid\text{rest}),
+\]
+since $U$ is uniform on $(0,1)$.
+Therefore $X$ has conditional CDF $G(\cdot\mid\text{rest})$ as desired.
+
+In a Gibbs sampler, each coordinate (or block) update draws from a conditional distribution.
+Replacing each draw by an inverse-CDF transform of an independent uniform random variable makes the update a deterministic function of the current state and the new randomness.
+Composing the coordinate/block updates within one sweep yields a transition map $F$, so the chain can be written as $x_t=F(x_{t-1},\xi_t)$ and hence as a rollout \eqref{eq:rollout-recursion}.%
+}
+
+\subsubsection{Metropolis corrections (RWMH and MALA)}
+\label{subsubsec:metropolis}
+
+Random-walk Metropolis--Hastings (RWMH) and the Metropolis-adjusted Langevin algorithm (MALA) add an accept/reject correction.
+For example, in RWMH with a symmetric Gaussian proposal,
+\[
+\tilde x_t = x_{t-1} + \delta \xi_t,
+\qquad \xi_t \sim \mathcal{N}(0,I_d),
+\qquad
+\alpha(x_{t-1},\tilde x_t) = \min\!\left\{1,\frac{\pi(\tilde x_t)}{\pi(x_{t-1})}\right\}.
+\]
+In MALA, the proposal is the ULA step \eqref{eq:ula-update}, but one still accepts/rejects using the Metropolis--Hastings ratio (with the Gaussian proposal densities).
+
+Given a proposal $\tilde x_t$ and an acceptance probability $\alpha(x_{t-1},\tilde x_t)\in[0,1]$, draw $u_t \sim \mathrm{Unif}(0,1)$ and set
+\begin{equation}
+  x_t =
+  \begin{cases}
+    \tilde x_t, & u_t \le \alpha(x_{t-1},\tilde x_t),\\
+    x_{t-1}, & \text{otherwise}.
+  \end{cases}
+  \label{eq:accept-reject}
+\end{equation}
+This is still a deterministic map of $(x_{t-1},\xi_t,u_t)$, and therefore still fits \Cref{def:reparam-transition}.
+The complication is differentiability: the accept/reject decision is a hard threshold, so the Jacobians needed for Gauss--Newton updates are not well defined everywhere.
+
+\begin{exercise}[Metropolis gating and differentiability]
+\label{ex:metropolis-gating}
+Consider the accept/reject step \eqref{eq:accept-reject}.
+\begin{enumerate}[leftmargin=*]
+  \item Show that it can be rewritten in the ``gating'' form $x_t = g_t \tilde x_t + (1-g_t)x_{t-1}$, where $g_t \in \{0,1\}$ depends on $(x_{t-1},\xi_t,u_t)$.
+  \item Explain why $x_{t}$ is generally not differentiable as a function of $x_{t-1}$.
+  \item Propose one smooth surrogate $\tilde g_t \in (0,1)$ that could be used \emph{only} to compute an approximate Jacobian, while keeping the forward update \eqref{eq:accept-reject} unchanged.
+\end{enumerate}
+\end{exercise}
+\SolutionBox[14]{%
+\begin{enumerate}[leftmargin=*]
+  \item Define $g_t := \1\{u_t \le \alpha(x_{t-1},\tilde x_t)\} \in \{0,1\}$.
+  Then \eqref{eq:accept-reject} is equivalent to
+  \[
+  x_t = g_t \tilde x_t + (1-g_t)x_{t-1}.
+  \]
+  Indeed, if $g_t=1$ (accept) this gives $x_t=\tilde x_t$, and if $g_t=0$ (reject) it gives $x_t=x_{t-1}$.
+  \item The map $x_{t-1}\mapsto g_t$ contains an indicator of an inequality.
+  Unless $\alpha(x_{t-1},\tilde x_t)$ is constant in $x_{t-1}$ (a degenerate case), the set where $g_t$ flips from $0$ to $1$ is a decision boundary, across which $g_t$ jumps discontinuously.
+  Since $x_t$ depends on $g_t$, the overall map $x_{t-1}\mapsto x_t$ is typically discontinuous in its derivative (and often discontinuous in the function itself when $\tilde x_t$ depends on $x_{t-1}$), so it is not differentiable everywhere.
+  \item One option is a logistic (soft) gate with temperature $\tau>0$:
+  \[
+    \tilde g_t := \sigma\!\left(\frac{\log \alpha(x_{t-1},\tilde x_t) - \log u_t}{\tau}\right)\in(0,1),
+  \]
+  where $\sigma(s)=1/(1+e^{-s})$.
+  As $\tau\downarrow 0$, $\tilde g_t$ becomes a sharper approximation to the hard gate $\1\{\log \alpha - \log u_t \ge 0\}$.
+  In an inexact Gauss--Newton implementation one would keep the forward update using the true hard gate $g_t$, but use $\tilde g_t$ (or its Jacobian contribution) when forming an approximate Jacobian for the Gauss--Newton step.%
+\end{enumerate}
+}
+
+\clearpage
+\subsection{Burn-in and stationarity: when does the trajectory solve get easier?}
+\label{subsec:burnin-stationarity}
+
+So far, we have fixed the random inputs $\xi_{1:T}$ and asked how to recover the corresponding length-$T$ trajectory in parallel.
+Burn-in is usually introduced as a statistical issue: early states may be far from the target distribution $\pi$.
+For parallel-in-time methods there is also a computational issue: the difficulty of solving the fixed-noise trajectory equations depends on how perturbations propagate along the rollout.
+
+The next proposition isolates the basic mechanism.
+It is simply a stability bound for the deterministic dynamics obtained after conditioning on the random inputs.
+
+\begin{proposition}[Away from stationarity: local stability can make the parallel solve easier or harder]
+\label{prop:away-from-stationarity-stability}
+Fix a realization of the random inputs $\xi_{1:T}$ used by the sampler and write the resulting deterministic transitions as maps $f_t$.
+Let $x_{1:T}$ and $x'_{1:T}$ be the rollouts from two initial states $x_0$ and $x_0'$ using the \emph{same} realization $\xi_{1:T}$.
+Assume each $f_t$ is $L_t$-Lipschitz on a set containing both trajectories.
+Then, for every $t$,
+\[
+\norm{x_t-x'_t}_2 \le \left(\prod_{s=1}^t L_s\right)\norm{x_0-x_0'}_2.
+\]
+In particular, if these products stay moderate (a stable/contracting regime), early-time errors are not amplified across the chain, while if they grow quickly (an expanding regime), small early-time errors can blow up at later times.%
+\end{proposition}
+\begin{proof}
+Let $t\ge 1$.
+Using the rollout recursion and the Lipschitz property,
+\[
+\norm{x_t-x'_t}_2
+=\norm{f_t(x_{t-1})-f_t(x'_{t-1})}_2
+\le L_t\,\norm{x_{t-1}-x'_{t-1}}_2.
+\]
+Iterating this inequality from $1$ to $t$ yields the stated bound.%
+\end{proof}
+
+This perspective connects directly to our two trajectory solvers.
+Picard is the fixed-point method: in a contracting regime it converges from any initialization, but when the map is not contractive over the full horizon it can diverge or move slowly, which is why damping and windowing are useful.
+Gauss--Newton is the second-order method: its linearized solve is always well-defined because the residual Jacobian is block lower triangular with identity blocks on the diagonal (\Cref{prop:jacobian-structure}), but in an expanding regime \Cref{prop:newton-amplification} shows that early residual errors can be amplified in the forward recursion, so damping, line search, and good warm starts matter most.
+
+For ULA with fixed noise and twice differentiable $U$, the transition maps are
+\[
+f_t(x)=x-\epsilon\nabla U(x)+\sqrt{2\epsilon}\,\xi_t,
+\qquad
+\frac{\partial f_t}{\partial x}(x)=I_d-\epsilon \Hess U(x).
+\]
+Thus curvature of $U$ (and the step size $\epsilon$) controls whether $f_t$ is locally contracting or expanding along the path.
+In strongly log-concave targets with globally bounded curvature, \Cref{prop:ula-contracting-regime} gives a clean globally contractive regime, so the stability factors in \Cref{prop:residual-to-path,prop:newton-amplification} stay controlled.
+Away from stationarity, the chain can pass through high-curvature (or negatively curved) regions, increasing local expansion factors and making windowing/damping more important.%
+
+More broadly, this fixed-randomness trajectory optimization viewpoint and its stability/conditioning issues are not special to MCMC.
+They also appear when parallelizing other sequential computations, including nonlinear state-space models and bridge-based diffusion sampling; see, e.g., \citet[\S3]{lim_zhu_selfridge_kasim_2024_parallelizing_nonlinear_sequential_models}, \citet[\S1]{gonzalez_warrington_smith_linderman_2024_towards_scalable_stable_parallelization_nonlinear_rnns}, and \citet[\S3]{shih_belkhale_ermon_sadigh_anari_2023_parallel_sampling_diffusion}.%
+
+\section{Diagnosing when parallel-in-time MCMC is worthwhile}
+\label{sec:parallel-mcmc-diagnostics}
+
+The final diagnosis is different from the nonconvex examples in the Optimization unit and from the expectation--maximization subsection in the Augmented-state optimization unit.
+For fixed randomness, the trajectory problem has one exact solution, so the main question is not which optimum exists but whether the iterative solver can reach that rollout quickly and stably.
+The useful checks are therefore numerical and geometric.
+One first asks whether the fixed-noise residual problem has the exact rollout as its unique stationary point, so that the issue is conditioning rather than competing minima.
+One then asks whether the products of local Lipschitz factors stay moderate along the horizon of interest, whether the rollout is contractive enough for Picard on the full horizon or instead requires damping and windows, whether the trajectory is smooth enough that Gauss--Newton has a useful linear model, and whether the solve passes through an expanding burn-in regime or a near-stationary regime where early errors are not strongly amplified.
+
+When those checks look favorable, scan-based Picard or Gauss--Newton updates can recover long rollouts substantially faster than one step at a time.
+When they fail, the right repair is usually windowing, damping, or a better local surrogate rather than a different sampling target.
+Carried back to the main notes, the lesson is that parallel-in-time sampling is not a new sampling principle.
+It is a numerical method for solving one realized trajectory, and its success is governed by the same conditioning and local-model questions that already control iterative methods elsewhere in the course.
+
+\bibliographystyle{plainnat}
+\makeatletter
+\begingroup
+\let\input@path\@empty
+\IfFileExists{references.bib}{%
+  \gdef\stat221bibpath{references}%
+}{%
+  \IfFileExists{../references.bib}{%
+    \gdef\stat221bibpath{../references}%
+  }{%
+    \gdef\stat221bibpath{../../references}%
+  }%
+}
+\endgroup
+\makeatother
+\bibliography{\stat221bibpath}
+
+\end{document}

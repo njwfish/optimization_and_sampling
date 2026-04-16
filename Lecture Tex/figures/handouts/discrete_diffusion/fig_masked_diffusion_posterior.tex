@@ -1,0 +1,100 @@
+\begin{tikzpicture}[>=Stealth,font=\small]
+  \tikzset{
+    tok/.style={
+      draw=stat221Gray!75!black,
+      fill=white,
+      rounded corners=3pt,
+      line width=0.85pt,
+      minimum width=1.74cm,
+      minimum height=0.84cm,
+      inner sep=1pt,
+      font=\normalsize,
+    },
+    maskedobs/.style={
+      tok,
+      fill=stat221Gray!8,
+    },
+    fixedtok/.style={
+      tok,
+      draw=stat221Blue!70!black,
+      fill=stat221BlueLight!60,
+    },
+    likelihood/.style={
+      rounded corners=4pt,
+      draw=stat221Blue!70!black,
+      fill=stat221BlueLight!28,
+      line width=0.85pt,
+      minimum width=1.55cm,
+      minimum height=0.58cm,
+      inner sep=2pt,
+      align=center,
+      font=\normalsize,
+    },
+    postbox/.style={
+      rounded corners=5pt,
+      draw=stat221Green!70!black,
+      fill=stat221GreenLight,
+      line width=0.95pt,
+      inner sep=8pt,
+      text width=6.2cm,
+      align=center,
+    },
+    heading/.style={
+      font=\small\bfseries,
+      text=stat221Gray,
+    },
+    note/.style={
+      font=\small,
+      text=stat221Gray,
+    },
+  }
+
+  \path[use as bounding box] (0.0,0.0) rectangle (13.8,5.95);
+
+  \matrix (tbl) [matrix of nodes,
+    nodes={anchor=center},
+    column sep=2.8mm,
+    row sep=2.5mm] at (5.20,3.70) {
+    |[maskedobs]| \texttt{[MASK]} &
+    |[fixedtok]| \texttt{cat} &
+    |[maskedobs]| \texttt{[MASK]} &
+    |[fixedtok]| \texttt{on} &
+    |[draw=none,fill=none,minimum width=1.55cm]| {} \\
+    |[tok]| \texttt{the} &
+    |[fixedtok]| \texttt{cat} &
+    |[tok]| \texttt{sat} &
+    |[fixedtok]| \texttt{on} &
+    |[likelihood]| \(s_t\) \\
+    |[tok]| \texttt{a} &
+    |[fixedtok]| \texttt{cat} &
+    |[tok]| \texttt{slept} &
+    |[fixedtok]| \texttt{on} &
+    |[likelihood]| \(s_t\) \\
+    |[tok]| \texttt{my} &
+    |[fixedtok]| \texttt{cat} &
+    |[tok]| \texttt{sat} &
+    |[fixedtok]| \texttt{on} &
+    |[likelihood]| \(s_t\) \\
+  };
+
+  \node[heading,anchor=east] at ($(tbl-1-1.west)+(-0.18,0)$) {observed row \(x\)};
+  \node[heading,anchor=east] at ($(tbl-3-1.west)+(-0.18,0.10)$) {compatible rows \(x_0\)};
+  \node[heading,align=center] at ($(tbl-1-5.center)+(0,0.72)$)
+    {\(q_{t\mid 0}(x\mid x_0)\)};
+
+  \draw[decorate,decoration={brace,amplitude=4pt},draw=stat221Blue!70!black,line width=0.9pt]
+    ($(tbl-2-5.east)+(0.20,0.22)$) -- ($(tbl-4-5.east)+(0.20,-0.22)$);
+  \node[anchor=west,text width=4.2cm,align=left,font=\small,text=stat221Blue!80!black]
+    at ($(tbl-3-5.east)+(0.58,0.14)$) {shared by every\\ compatible row\\[0.2em]
+    \(s_t=\alpha_t^{|U(x)|}(1-\alpha_t)^{|M(x)|}\)};
+
+  \coordinate (postcenter) at ($(tbl-4-1.south)!0.5!(tbl-4-4.south)+(0,-1.16)$);
+  \node[postbox] (postboxnode) at (postcenter) {%
+    \(\displaystyle q_{0\mid t}(x_0\mid x)\propto p_0(x_0)\)
+
+    \vspace{0.35em}
+    normalize \(p_0\) on the compatible rows};
+  \draw[->,stat221Gray!70,line width=1.0pt]
+    ($(tbl-4-1.south)!0.5!(tbl-4-4.south)+(0,-0.08)$) -- ($(postboxnode.north)+(0,0.14)$);
+  \node[note,anchor=west] at ($(postboxnode.north)+(0.28,0.16)$) {cancel the common factor};
+\end{tikzpicture}

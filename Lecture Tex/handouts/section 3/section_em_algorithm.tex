@@ -1,0 +1,1503 @@
+\documentclass[11pt]{article}
+
+% Make this file compilable from the repo root or within `Lecture Tex/handouts/`.
+\makeatletter
+\def\input@path{{../../}{../}{Lecture Tex/}}
+\makeatother
+\input{preamble}
+\usepackage{float} % for [H] placement specifier in algorithms
+
+\graphicspath{{../../}{../}{Lecture Tex/}{../../figures/}{../figures/}{Lecture Tex/figures/}}
+
+% ------------------------------------------------------------
+% Build toggle for solutions.
+% - Student version (default): show workspace boxes, hide solutions.
+% - Solutions version: define \STATshowsolutions on the command line.
+%   Preferred repo-level build (compiles the titled PDFs directly and clears legacy outputs):
+%     python3 scripts/build_handouts.py --section 3
+%   Example:
+%     pdflatex "\def\STATshowsolutions{1}\input{Lecture Tex/handouts/section 3/section_em_algorithm.tex}"
+%   (Low-level direct build: if you invoke latexmk manually, set -jobname to the
+%    titled output so the compiled PDF matches the standard naming scheme.)
+\newif\ifshowsolutions
+\showsolutionsfalse
+\ifdefined\STATshowsolutions
+  \showsolutionstrue
+\fi
+\ifcsname STAT221SOLUTIONS\endcsname
+  \showsolutionstrue
+\fi
+
+% Solutions/workspace boxes (controlled by \ifshowsolutions).
+% Usage: \SolutionBox[<workspace lines>]{<solution body>}
+\newcommand{\SolutionBox}[2][10]{%
+  \ifshowsolutions
+    \begin{tcolorbox}[stat221panelgray,title={Solution}]
+    #2
+    \end{tcolorbox}
+  \else
+    \begin{tcolorbox}[stat221panelgray,unbreakable,title={Workspace}]
+    \vspace{#1\baselineskip}
+    \end{tcolorbox}
+  \fi
+}
+
+\title{How does EM turn latent variables into tractable optimization?}
+\author{}
+\date{}
+
+\begin{document}
+\maketitle
+
+\section[EM as augmented-state optimization]{How does EM turn latent variables into tractable optimization?}
+\label{sec:em-why-hard}
+
+EM belongs to the augmented-state viewpoint because the joint law $p_\theta(x,z)$ is easy to work with even though the observed-data likelihood
+\[
+p_\theta(x)=\int p_\theta(x,z)\,dz
+\]
+is not.
+The obstruction is the same one emphasized in the Augmented-state optimization unit:
+the logarithm in $\ell(\theta;x)=\log p_\theta(x)$ sits outside the marginalization over $z$, so the observed objective does not inherit the simple structure of the complete-data model.
+
+This handout keeps two objects in view.
+The first is the free-energy functional, which explains monotonicity through coordinate ascent.
+The second is the induced update map on $\theta$, which explains local contraction, sensitivity to initialization, and sample-to-population perturbations.
+It builds directly on the Augmented-state optimization unit and serves as the last step before the Variational inference unit, where the exact posterior update is replaced by a restricted family.
+
+\subsection{Setup, free energy, and the \texorpdfstring{$Q$}{Q}-function}
+\label{subsec:em-q-function}
+
+Fix observed data $x$, latent variable $z$, and a parametric family of joint densities or mass functions $\{p_\theta(x,z): \theta\in\R^d\}$.
+The observed-data likelihood is the marginalized quantity
+\[
+p_\theta(x)=\int p_\theta(x,z)\,dz,
+\qquad
+\ell(\theta;x)\coloneqq \log p_\theta(x),
+\]
+with the integral replaced by a sum when $z$ is discrete.
+Throughout, we restrict attention to parameter values for which $p_\theta(x)>0$ and the conditional expectations below are finite, so that the posterior law $p_\theta(z\mid x)$ and the surrogate $Q(\cdot\mid\theta)$ are well defined.
+The hard step is that the logarithm sits outside the integral, so direct optimization of $\ell(\theta;x)$ can be much less transparent than optimization of the complete-data log-density $\log p_\theta(x,z)$.
+
+For any candidate latent law $q$, write
+\[
+H(q)\coloneqq -\int q(z)\log q(z)\,dz
+\]
+for its entropy.
+The joint object that organizes EM is the free-energy functional
+\[
+\mathcal{F}(q,\theta)
+\coloneqq
+\E_q[\log p_\theta(x,Z)] + H(q),
+\]
+which couples a parameter value $\theta$ with an auxiliary law $q$ over the latent variable.
+Exact EM is coordinate ascent on this functional:
+it updates the latent law by conditioning and updates the parameter by maximizing the resulting averaged complete-data objective.
+
+If $\theta^{(t)}$ is the current iterate, the E-step forms the exact posterior law
+\[
+q_t(z)\coloneqq p_{\theta^{(t)}}(z\mid x),
+\]
+and the M-step maximizes the surrogate
+\begin{equation}
+  Q(\theta\mid \theta^{(t)})
+  \coloneqq
+  \E_{Z\sim q_t}\bigl[\log p_\theta(x,Z)\bigr]
+  =
+  \int \log p_\theta(x,z)\,q_t(z)\,dz.
+  \label{eq:em-q-function}
+\end{equation}
+Thus the E-step updates the latent law and the M-step optimizes with that law held fixed.
+
+\begin{algorithm}[H]
+  \caption{Expectation--maximization (EM)}
+  \label{alg:em}
+  \begin{algorithmic}[1]
+    \Require Observed data $x$, joint model $p_\theta(x,z)$, initial guess $\theta^{(0)}$, stopping tolerance $\varepsilon$
+    \Ensure Approximate maximizer of the observed-data log-likelihood
+    \For{$t=0,1,2,\dots$}
+      \State \textbf{E-step:} compute the conditional law $q_t(z)=p_{\theta^{(t)}}(z\mid x)$
+      \State Form $Q(\theta\mid \theta^{(t)})=\E_{Z\sim q_t}\!\left[\log p_\theta(x,Z)\right]$
+      \State \textbf{M-step:} choose $\theta^{(t+1)}\in\argmax_{\theta} Q(\theta\mid \theta^{(t)})$
+      \If{$\norm{\theta^{(t+1)}-\theta^{(t)}}_2 \le \varepsilon$}
+        \State \Return $\theta^{(t+1)}$
+      \EndIf
+    \EndFor
+  \end{algorithmic}
+\end{algorithm}
+
+The exact maximization in the M-step can be relaxed.
+Any update that merely increases $Q(\theta\mid\theta^{(t)})$ is called a \emph{generalized EM} step.
+That variant is important computationally, but the geometric story is already visible in exact EM.
+
+\begin{proposition}[EM as coordinate ascent on free energy]
+\label{prop:em-free-energy-coordinate-ascent}
+For any parameter value $\theta$ with $p_\theta(x)>0$ and any density $q$ supported where $p_\theta(x,z)>0$ for which the displayed integrals are finite,
+\begin{equation}
+  \ell(\theta;x)
+  =
+  \mathcal{F}(q,\theta)
+  +
+  \operatorname{KL}\!\bigl(q(z)\,\|\,p_\theta(z\mid x)\bigr).
+  \label{eq:em-free-energy-identity}
+\end{equation}
+Consequently:
+\begin{enumerate}[leftmargin=*]
+  \item for fixed $\theta$, the maximizer of $\mathcal{F}(q,\theta)$ over all densities $q$ is the exact posterior $p_\theta(z\mid x)$, unique up to almost-everywhere equality;
+  \item exact EM alternates the exact $q$-update
+  \[
+    q^{(t+1)}(z)=p_{\theta^{(t)}}(z\mid x)
+  \]
+  with the exact $\theta$-update
+  \[
+    \theta^{(t+1)}\in\argmax_\theta \mathcal{F}(q^{(t+1)},\theta);
+  \]
+  \item if $q$ is restricted to a tractable family $\mathcal{Q}$, then maximizing $\mathcal{F}(q,\theta)$ over $q\in\mathcal{Q}$ and $\theta$ is precisely the variational-inference relaxation developed in the Variational inference unit.
+\end{enumerate}
+\end{proposition}
+
+\begin{proof}
+Starting from Bayes' rule,
+\[
+p_\theta(z\mid x)=\frac{p_\theta(x,z)}{p_\theta(x)}.
+\]
+Substituting this identity into the definition of KL divergence gives
+\[
+\operatorname{KL}\!\bigl(q(z)\,\|\,p_\theta(z\mid x)\bigr)
+=
+\int q(z)\log \frac{q(z)\,p_\theta(x)}{p_\theta(x,z)}\,dz.
+\]
+Rearranging yields \eqref{eq:em-free-energy-identity}.
+For fixed $\theta$, the term $\ell(\theta;x)$ is constant in $q$, so maximizing $\mathcal{F}(q,\theta)$ is equivalent to minimizing the KL divergence to the exact posterior.
+That proves the first claim.
+
+For the second claim, the exact $q$-update is just the maximizer from the first part.
+Once $q^{(t+1)}$ is fixed, the entropy term $H(q^{(t+1)})$ is constant in $\theta$, so maximizing $\mathcal{F}(q^{(t+1)},\theta)$ over $\theta$ is equivalent to maximizing
+\[
+\E_{q^{(t+1)}}[\log p_\theta(x,Z)]
+=
+Q(\theta\mid \theta^{(t)}),
+\]
+which is exactly the M-step.
+The third claim is the same statement with the $q$-optimization restricted from all densities to the smaller family $\mathcal{Q}$.
+\end{proof}
+
+\begin{proposition}[EM monotonicity]
+\label{prop:em-monotonicity}
+Let $\ell(\theta;x)=\log p_\theta(x)$ and let $q_t(z)=p_{\theta^{(t)}}(z\mid x)$.
+If $\theta^{(t+1)}$ satisfies
+\[
+Q(\theta^{(t+1)}\mid \theta^{(t)}) \ge Q(\theta^{(t)}\mid \theta^{(t)}),
+\]
+then
+\[
+  \ell(\theta^{(t+1)};x) \ge \ell(\theta^{(t)};x).
+\]
+In particular, exact EM does not decrease the observed-data log-likelihood.
+\end{proposition}
+
+\begin{proof}
+For any $\theta$,
+\[
+\ell(\theta;x)
+=
+\log \int q_t(z)\,\frac{p_\theta(x,z)}{q_t(z)}\,dz.
+\]
+Applying Jensen's inequality to the concave logarithm gives
+\[
+\ell(\theta;x)
+\ge
+\int q_t(z)\log \frac{p_\theta(x,z)}{q_t(z)}\,dz
+=
+Q(\theta\mid \theta^{(t)}) - \int q_t(z)\log q_t(z)\,dz.
+\]
+The second term does not depend on $\theta$.
+Moreover, when $\theta=\theta^{(t)}$, Bayes' rule gives
+\[
+\frac{p_{\theta^{(t)}}(x,z)}{q_t(z)}
+=
+\frac{p_{\theta^{(t)}}(x,z)}{p_{\theta^{(t)}}(z\mid x)}
+=
+p_{\theta^{(t)}}(x),
+\]
+which is constant in $z$, so Jensen's inequality is tight at $\theta^{(t)}$.
+Therefore
+\[
+\ell(\theta^{(t+1)};x) - \ell(\theta^{(t)};x)
+\ge
+Q(\theta^{(t+1)}\mid \theta^{(t)}) - Q(\theta^{(t)}\mid \theta^{(t)})
+\ge 0.
+\]
+\end{proof}
+
+The monotonicity result is important, but it is also the first place where students often over-interpret EM.
+Likelihood ascent says that EM moves uphill.
+It does \emph{not} identify which basin the iterate enters, how wide that basin is, or how quickly the map contracts once it is near a desirable fixed point.
+Those are geometric questions about the EM update map.
+
+\subsection{Worked example: a two-coin mixture and soft assignments}
+\label{subsec:em-two-coins}
+
+Suppose coin $A$ lands heads with probability $\theta_A$ and coin $B$ lands heads with probability $\theta_B$.
+For each experiment $i=1,\dots,N$:
+\begin{enumerate}[leftmargin=*]
+  \item choose coin $A$ with probability $\pi$ and coin $B$ with probability $1-\pi$,
+  \item toss the chosen coin $m$ times,
+  \item record only the number of heads $X_i\in\{0,1,\dots,m\}$.
+\end{enumerate}
+The latent variable
+\[
+Z_i\in\{A,B\}
+\]
+records which coin was used in experiment $i$.
+Conditional on $Z_i=A$, we have $X_i\sim\operatorname{Bin}(m,\theta_A)$, and conditional on $Z_i=B$, we have $X_i\sim\operatorname{Bin}(m,\theta_B)$.
+
+If the labels $Z_1,\dots,Z_N$ were observed, estimation would be straightforward.
+Indeed, the complete-data likelihood is
+\begin{align}
+  p(x,z\mid \pi,\theta_A,\theta_B)
+  =
+  \prod_{i=1}^N
+  &\Bigl[
+    \pi \binom{m}{x_i}\theta_A^{x_i}(1-\theta_A)^{m-x_i}
+  \Bigr]^{\1\{z_i=A\}}
+  \nonumber\\
+  &\times
+  \Bigl[
+    (1-\pi)\binom{m}{x_i}\theta_B^{x_i}(1-\theta_B)^{m-x_i}
+  \Bigr]^{\1\{z_i=B\}}.
+  \label{eq:em-two-coins-complete}
+\end{align}
+The corresponding complete-data log-likelihood is
+\begin{align}
+  \log p(x,z\mid \pi,\theta_A,\theta_B)
+  =
+  \sum_{i=1}^N
+  \Bigl[
+    &\1\{z_i=A\}\bigl(\log \pi + x_i\log \theta_A + (m-x_i)\log(1-\theta_A)\bigr)
+    \nonumber\\
+    +
+    &\1\{z_i=B\}\bigl(\log(1-\pi) + x_i\log \theta_B + (m-x_i)\log(1-\theta_B)\bigr)
+    \nonumber\\
+    +
+    &\log \binom{m}{x_i}
+  \Bigr].
+  \label{eq:em-two-coins-complete-loglik}
+\end{align}
+
+The observed-data likelihood is harder because we must sum over the unknown labels:
+\begin{equation}
+  p(x\mid \pi,\theta_A,\theta_B)
+  =
+  \prod_{i=1}^N
+  \left[
+    \pi \binom{m}{x_i}\theta_A^{x_i}(1-\theta_A)^{m-x_i}
+    +
+    (1-\pi)\binom{m}{x_i}\theta_B^{x_i}(1-\theta_B)^{m-x_i}
+  \right].
+  \label{eq:em-two-coins-observed-likelihood}
+\end{equation}
+Taking a logarithm turns the product into a sum, but each summand still contains a logarithm of a \emph{sum}, so direct maximization is awkward.
+
+Given current estimates $(\pi^{(t)},\theta_A^{(t)},\theta_B^{(t)})$, the E-step computes the posterior probability that experiment $i$ used coin $A$:
+\begin{equation}
+  \gamma_{i,A}^{(t)}
+  \coloneqq
+  \Pr(Z_i=A\mid X_i=x_i,\pi^{(t)},\theta_A^{(t)},\theta_B^{(t)})
+  =
+  \frac{
+    \pi^{(t)} (\theta_A^{(t)})^{x_i}(1-\theta_A^{(t)})^{m-x_i}
+  }{
+    \pi^{(t)} (\theta_A^{(t)})^{x_i}(1-\theta_A^{(t)})^{m-x_i}
+    +
+    (1-\pi^{(t)}) (\theta_B^{(t)})^{x_i}(1-\theta_B^{(t)})^{m-x_i}
+  }.
+  \label{eq:em-two-coins-responsibility}
+\end{equation}
+We also write
+\[
+\gamma_{i,B}^{(t)}\coloneqq 1-\gamma_{i,A}^{(t)}.
+\]
+
+Using these posterior weights in \eqref{eq:em-two-coins-complete-loglik} yields the surrogate
+\begin{align}
+  Q(\pi,\theta_A,\theta_B \mid \pi^{(t)},\theta_A^{(t)},\theta_B^{(t)})
+  =
+  \sum_{i=1}^N
+  \Bigl[
+    &\gamma_{i,A}^{(t)}\bigl(\log \pi + x_i\log \theta_A + (m-x_i)\log(1-\theta_A)\bigr)
+    \nonumber\\
+    +
+    &\gamma_{i,B}^{(t)}\bigl(\log(1-\pi) + x_i\log \theta_B + (m-x_i)\log(1-\theta_B)\bigr)
+  \Bigr]
+  + \text{const},
+  \label{eq:em-two-coins-q}
+\end{align}
+where the constant term does not depend on $(\pi,\theta_A,\theta_B)$.
+
+Because the parameters separate, the M-step has closed-form updates:
+\begin{equation}
+  \pi^{(t+1)} = \frac{1}{N}\sum_{i=1}^N \gamma_{i,A}^{(t)},
+  \label{eq:em-two-coins-pi-update}
+\end{equation}
+\begin{equation}
+  \theta_A^{(t+1)}
+  =
+  \frac{\sum_{i=1}^N \gamma_{i,A}^{(t)} x_i}{m\sum_{i=1}^N \gamma_{i,A}^{(t)}},
+  \qquad
+  \theta_B^{(t+1)}
+  =
+  \frac{\sum_{i=1}^N \gamma_{i,B}^{(t)} x_i}{m\sum_{i=1}^N \gamma_{i,B}^{(t)}}.
+  \label{eq:em-two-coins-theta-update}
+\end{equation}
+
+These formulas are the cleanest way to internalize what EM is doing.
+The unknown labels are not hard-assigned; they are replaced by \emph{soft} posterior weights.
+Each M-step is therefore a weighted maximum-likelihood problem.
+When responsibilities are close to $0$ or $1$, the update behaves almost like a hard clustering step.
+When many responsibilities stay near $1/2$, the current parameter does not sharply distinguish the latent states, so the update is much less decisive and local refinement becomes slow.
+
+That soft-to-hard transition sets up the fixed-point geometry developed in the rest of the handout.
+In the small-variance limit of spherical Gaussian mixtures, the responsibilities become nearly binary and EM approaches hard EM / \texorpdfstring{$k$}{k}-means.
+That limit isolates basin structure in the cleanest possible toy problem.
+
+\clearpage
+% ------------------------------------------------------------
+\section[EM as a fixed-point map]{What does the EM update map tell us?}
+\label{sec:em-fixed-point-map}
+
+The coordinate-ascent picture explains monotonicity.
+For analysis, however, the central object is the update map itself.
+On a fixed dataset, EM repeatedly applies an empirical operator.
+At the population level, where empirical averages are replaced by expectations, EM becomes a deterministic dynamical system.
+
+For i.i.d.\ data $Y_1,\dots,Y_n$, define the empirical surrogate
+\[
+Q_n(\theta'\mid\theta)
+\coloneqq
+\frac{1}{n}\sum_{i=1}^n
+\E\bigl[\log p(Y_i,Z_i\mid\theta')\mid Y_i,\theta\bigr],
+\]
+and its population counterpart
+\[
+Q(\theta'\mid\theta)
+\coloneqq
+\E\Big[\E\bigl[\log p(Y,Z\mid\theta')\mid Y,\theta\bigr]\Big].
+\]
+With a deterministic tie-breaking rule when maximizers are not unique, define the sample and population EM operators by
+\[
+M_n(\theta)\in\argmax_{\theta'\in\Theta} Q_n(\theta'\mid\theta),
+\qquad
+M(\theta)\in\argmax_{\theta'\in\Theta} Q(\theta'\mid\theta).
+\]
+The resulting dynamics are
+\[
+\theta^{t+1}=M_n(\theta^t)
+\qquad\text{and}\qquad
+\theta^{t+1}=M(\theta^t).
+\]
+
+\subsection{Self-consistency, basins, and local geometry}
+\label{subsec:em-self-consistency}
+
+Let $\theta^\star$ be a maximizer of the \emph{population} observed-data log-likelihood $\theta\mapsto \E[\log p(Y\mid\theta)]$.
+Under the same regularity used to define the population EM operator, such a maximizer is self-consistent in the sense of \citet[eq.~(24)]{balakrishnan_wainwright_yu_2014_em}:
+\[
+\theta^\star \in \argmax_{\theta'\in\Theta} Q(\theta' \mid \theta^\star),
+\]
+and, with the tie-breaking rule fixed as above, we choose the self-consistent maximizer at such points so that
+\[
+M(\theta^\star)=\theta^\star.
+\]
+This is the starting point for local analysis.
+The real questions are not whether fixed points exist, but which ones are stable, how wide their basins are, and whether realistic initializations ever reach them.
+
+\begin{definition}[Basins and stability]
+\label{def:em-basins}
+Fix an update map $T:\Theta\to\Theta$ (for example, $T=M$ or $T=M_n$).
+\begin{enumerate}[leftmargin=*]
+  \item A point $\bar\theta$ is a \textbf{fixed point} if $T(\bar\theta)=\bar\theta$.
+  \item The \textbf{basin of attraction} of $\bar\theta$ is the set of initializations $\theta^0$ for which the iterates $\theta^{t+1}=T(\theta^t)$ converge to $\bar\theta$.
+  \item The fixed point is \textbf{locally stable} if there exists $r>0$ such that every initialization in the ball $\{\theta:\norm{\theta-\bar\theta}_2\le r\}$ converges to $\bar\theta$.
+\end{enumerate}
+\end{definition}
+
+This is the EM analog of the basin-versus-local-geometry split in the Optimization unit's treatment of nonconvex objectives.
+For EM there are three distinct geometric questions.
+\begin{enumerate}[leftmargin=*]
+  \item which fixed points $M$ has, and which initializations flow to each one;
+  \item how strongly the map pulls the iterates back once they are near a good fixed point;
+  \item how close the random sample operator $M_n$ is to the population operator $M$ on the part of parameter space actually visited by the iterates.
+\end{enumerate}
+
+The second question is a genuinely geometric one.
+In one dimension, local refinement is governed by the slope of the EM map at a fixed point:
+if $|M'(\theta^\star)|<1$, the fixed point is locally attractive; the closer the slope is to $0$, the faster the contraction.
+If $|M'(\theta^\star)|>1$, the fixed point is unstable.
+In higher dimensions, the same role is played by the Jacobian norm $\|DM(\theta^\star)\|_2$.
+
+\begin{figure}[t]
+  \centering
+  \input{figures/main_notes/augmented_state_optimization/fig_em_operator_fixed_points}
+  \caption{One-dimensional population EM map for a symmetric two-component Gaussian mixture. Fixed points are intersections with the diagonal. Stable intersections have slope magnitude less than $1$. Better separation bends the map away from the diagonal near the target, so the local slope is smaller and refinement is faster.}
+  \label{fig:em-operator-fixed-points}
+\end{figure}
+
+\Cref{fig:em-operator-fixed-points} summarizes the geometry that drives the rest of the note.
+The diagonal marks the fixed-point condition.
+Basins decide \emph{which} stable intersection EM reaches.
+The local slope or Jacobian decides \emph{how fast} EM settles once it is in the right basin.
+
+\clearpage
+% ------------------------------------------------------------
+\section[\texorpdfstring{$k$}{k}-means as hard EM]{Example I: \texorpdfstring{$k$}{k}-means as hard EM}
+\label{sec:kmeans-basin-picture}
+
+$k$-means already shows why basin structure is unavoidable for EM-type methods.
+It is the hard-EM limit of a spherical Gaussian mixture as the variance shrinks.
+In that limit, posterior weights become $0$--$1$ assignments, so the E-step is no longer soft:
+each data point is assigned to its closest center and the M-step replaces each center by the mean of its assigned points.
+
+This toy model is useful because it isolates the source of the geometry.
+For a \emph{fixed} assignment pattern, the M-step is simple:
+inside that assignment region, the update is just ``take cluster means,'' so the map is easy.
+The difficulty comes from the assignment boundaries.
+As soon as a Voronoi boundary crosses one of the data points, the latent assignments jump, the update rule changes, and the algorithm can flow toward a different self-consistent partition.
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\textwidth]{figures/handouts/em_algorithm/fig_kmeans_fixed_points}
+  \caption{A toy $k$-means instance with two stable solutions depending on how the ambiguous ``middle'' points are assigned. Even in this simple setting, the update map has multiple basins and different fixed points can have different objective values.}
+  \label{fig:kmeans-fixed-points}
+\end{figure}
+
+\Cref{fig:kmeans-fixed-points} makes the basin story visible.
+The central points sit near an assignment boundary.
+One initialization causes them to be claimed by the left cluster; another causes them to be claimed by the right cluster.
+Once those assignments differ, the cluster means move differently, which reinforces the difference on the next E-step.
+The stable solutions are therefore \emph{self-consistent latent assignments}.
+
+This is exactly why initialization is part of the method rather than an afterthought.
+In latent-variable problems one rarely hopes for a global theorem of the form ``EM converges to the best optimum from everywhere.''
+Instead, the practical template is
+\begin{algorithm}[H]
+  \caption{Two-stage template: initialization + EM refinement}
+  \label{alg:two-stage-em}
+  \begin{algorithmic}[1]
+    \Require Model class and EM operator $M_n$, plus a cheap initializer.
+    \Ensure An estimate $\hat\theta$ intended to approximate a good population maximizer.
+    \State \textbf{Initialization:} produce one or more candidates $\Theta_0$ (e.g.\ moments/spectral, $k$-means++, random restarts).
+    \State Pick $\theta^{(0)}\in\Theta_0$ using a simple score (e.g.\ likelihood, held-out likelihood, or a surrogate).
+    \State \textbf{Refinement:} run EM iterations $\theta^{(t+1)}=M_n(\theta^{(t)})$ until convergence; return the final iterate $\hat\theta$.
+  \end{algorithmic}
+\end{algorithm}
+
+The Gaussian-mixture example later keeps the same logic but replaces hard assignments by soft responsibilities.
+That makes the map smooth enough to analyze with derivatives, while preserving the same basin-versus-rate distinction.
+
+\section[Gaussian mixture]{Example II: a two-component Gaussian mixture}
+\label{sec:gmm-pop-em}
+
+We now illustrate the contractive-map picture in the simplest EM setting: a balanced two-component Gaussian mixture with known variance.
+To keep notation light, we work in one dimension and parameterize the unknown mean as $\theta^\star>0$; the model is
+\[
+Y \sim \tfrac12\,\mathcal{N}(\theta^\star,\sigma^2) + \tfrac12\,\mathcal{N}(-\theta^\star,\sigma^2),
+\]
+and we estimate $\theta\in\R$.
+The latent variable is the component label.
+This model makes the basin picture and the local-rate picture visible in the same calculation.
+The same explicit map will explain why sign determines the basin and why separation controls the slope.
+
+\subsection{EM operator and fixed points}
+\label{subsec:gmm-em-operator}
+
+Given a sample $\{y_i\}_{i=1}^n$, EM alternates between responsibilities
+$w_\theta(y_i)=\Pr(Z=+1\mid Y=y_i,\theta)$ and maximizing the resulting quadratic surrogate $Q_n(\theta'\mid\theta)$.
+In this model both steps have closed forms, so the update map is one-dimensional and explicit.
+
+\subsubsection{Deriving the EM update in closed form}
+\label{subsubsec:gmm-derivation}
+
+We parameterize the mixture using a latent label $Z\in\{-1,+1\}$ with $\Pr(Z=+1)=\Pr(Z=-1)=1/2$ and
+\[
+Y\mid Z=z,\theta' \sim \mathcal{N}(z\theta',\sigma^2).
+\]
+The complete-data log-likelihood is (up to constants)
+\[
+\log f_{\theta'}(y,z) = -\frac{1}{2\sigma^2}\big(y-z\theta'\big)^2.
+\]
+By Bayes' rule, the responsibility is
+\begin{align*}
+w_\theta(y)
+&=\Pr(Z=+1\mid Y=y,\theta)
+=\frac{\exp\!\left(-\frac{(y-\theta)^2}{2\sigma^2}\right)}{\exp\!\left(-\frac{(y-\theta)^2}{2\sigma^2}\right)+\exp\!\left(-\frac{(y+\theta)^2}{2\sigma^2}\right)} \\
+&=\frac{1}{1+\exp\!\left(-\frac{(y+\theta)^2-(y-\theta)^2}{2\sigma^2}\right)}
+=\frac{1}{1+\exp\!\left(-\frac{2\theta y}{\sigma^2}\right)}.
+\end{align*}
+Here $(y+\theta)^2-(y-\theta)^2=4\theta y$, so the responsibility is a logistic function of $\theta y/\sigma^2$.
+Equivalently,
+\[
+2w_\theta(y)-1 = \tanh\!\left(\frac{\theta y}{\sigma^2}\right),
+\]
+so the ``soft label'' $2w_\theta(y)-1$ is a smooth odd function of the score $\theta y$.
+
+The sample $Q$-function is the conditional expectation of the complete-data log-likelihood,
+\[
+Q_n(\theta'\mid\theta)
+=
+-\frac{1}{2n\sigma^2}\sum_{i=1}^n\Big(
+w_\theta(y_i)\,(y_i-\theta')^2 + (1-w_\theta(y_i))\,(y_i+\theta')^2
+\Big),
+\]
+which is a concave quadratic function of $\theta'$.
+Differentiate and set the derivative equal to $0$:
+\[
+0
+=
+\frac{\partial}{\partial \theta'}Q_n(\theta'\mid\theta)
+=
+\frac{1}{n\sigma^2}\sum_{i=1}^n\Big(
+w_\theta(y_i)\,(y_i-\theta') - (1-w_\theta(y_i))\,(y_i+\theta')
+\Big).
+\]
+Rearrange the term inside the sum as
+\[
+w_\theta(y_i)\,(y_i-\theta') - (1-w_\theta(y_i))\,(y_i+\theta')
+=
+\big(2w_\theta(y_i)-1\big)\,y_i-\theta',
+\]
+so the first-order condition becomes $0=\frac{1}{n\sigma^2}\sum_{i=1}^n\big(\big(2w_\theta(y_i)-1\big)\,y_i-\theta'\big)$.
+Solving for $\theta'$ yields the closed-form M-step
+\[
+M_n(\theta)
+=
+\frac{1}{n}\sum_{i=1}^n \big(2w_\theta(y_i)-1\big)\,y_i
+=
+\frac{1}{n}\sum_{i=1}^n y_i\,\tanh\!\left(\frac{\theta y_i}{\sigma^2}\right).
+\]
+At the population level, the sample average is replaced by an expectation:
+\[
+M(\theta)
+=
+\E\!\left[\big(2w_\theta(Y)-1\big)\,Y\right]
+=
+\E\!\left[Y\,\tanh\!\left(\frac{\theta Y}{\sigma^2}\right)\right],
+\]
+yielding a deterministic update map $\theta^{t+1}=M(\theta^t)$.
+This formula makes the geometry visible.
+The score $\theta Y$ determines the posterior sign of the latent label, and the hyperbolic tangent turns that score into a soft label in $[-1,1]$.
+When the mixture components are well separated, most draws of $Y$ make $\theta Y/\sigma^2$ large in magnitude, so the soft labels are close to $\pm 1$ and EM behaves almost like a hard assignment step.
+When the components are weakly separated, the same soft labels stay closer to $0$, so the map lies nearer the diagonal and refinement is slower.
+
+\begin{lemma}[Population fixed points for the symmetric mixture]
+\label{lem:gmm-fixed-points}
+Under the population model $Y=Z\theta^\star+\varepsilon$ with $Z\in\{-1,+1\}$ uniform and $\varepsilon\sim \mathcal{N}(0,\sigma^2)$ independent of $Z$, the population EM map satisfies
+\[
+M(\theta^\star)=\theta^\star,
+\qquad
+M(-\theta^\star)=-\theta^\star,
+\qquad
+M(0)=0.
+\]
+\end{lemma}
+
+\begin{proof}
+For any $\theta$, the posterior mean of the label is
+\[
+\E[Z\mid Y=y,\theta]
+= (+1)\Pr(Z=+1\mid y,\theta) + (-1)\Pr(Z=-1\mid y,\theta)
+=2w_\theta(y)-1.
+\]
+Therefore $M(\theta)=\E\!\left[Y\,\E[Z\mid Y,\theta]\right]$.
+At $\theta=\theta^\star$, the conditional expectation is taken under the true model, so by the tower property
+\[
+M(\theta^\star)
+=\E\!\left[Y\,\E[Z\mid Y,\theta^\star]\right]
+=\E[YZ].
+\]
+Since $Y=Z\theta^\star+\varepsilon$ with $\varepsilon\perp Z$ and $Z^2=1$, we have $\E[YZ]=\E[(Z\theta^\star+\varepsilon)Z]=\theta^\star$.
+The identity $M(-\theta^\star)=-\theta^\star$ follows by the same argument (or by symmetry of the model), and $M(0)=0$ follows because $w_0(y)=1/2$ so $2w_0(y)-1=0$.
+\end{proof}
+
+In this example the geometry assumption in \Cref{thm:em-fos-implies-contraction} is immediate:
+the population objective $q(\theta')=Q(\theta'\mid\theta^\star)$ is a concave quadratic in $\theta'$ with second derivative $q''(\theta')=-1/\sigma^2$, hence it is globally $(1/\sigma^2)$-strongly concave.
+The remaining step is to verify that the update map is stable in the basin of interest, which in one dimension reduces to controlling the slope $|M'(\theta)|$.
+
+The third fixed point at $0$ plays a different role.
+It is a self-consistent point in the sense that perfectly ambiguous responsibilities stay ambiguous, but it is not attractive.
+The next exercise computes that instability directly.
+
+\begin{exercise}[Instability of the zero fixed point in the Gaussian mixture map]
+\label{ex:gmm-zero-unstable}
+Consider the population EM map
+\[
+M(\theta)=\E\!\left[Y\,\tanh\!\left(\frac{\theta Y}{\sigma^2}\right)\right],
+\qquad
+Y=Z\theta^\star+\varepsilon,\ Z\in\{-1,+1\}\text{ uniform},\ \varepsilon\sim\mathcal{N}(0,\sigma^2).
+\]
+\begin{enumerate}[leftmargin=*]
+  \item Show that $M$ is an odd function: $M(-\theta)=-M(\theta)$.
+  \item Differentiate under the expectation to show
+  \[
+  M'(\theta)=\E\!\left[\frac{Y^2}{\sigma^2}\cdot \frac{1}{\cosh^2\!\left(\frac{\theta Y}{\sigma^2}\right)}\right].
+  \]
+  \item Compute $M'(0)$ and conclude that $0$ is a locally unstable fixed point (i.e.\ $|M'(0)|>1$).
+\end{enumerate}
+\end{exercise}
+
+\SolutionBox[14]{%
+\emph{Part (1).}
+Using that $\tanh$ is odd,
+\[
+M(-\theta)
+=\E\!\left[Y\,\tanh\!\left(-\frac{\theta Y}{\sigma^2}\right)\right]
+=-\E\!\left[Y\,\tanh\!\left(\frac{\theta Y}{\sigma^2}\right)\right]
+=-M(\theta).
+\]
+
+\emph{Part (2).}
+Since $\frac{d}{du}\tanh(u)=\cosh^{-2}(u)$ and $\tanh,\cosh^{-2}$ are bounded, dominated convergence justifies differentiation under the expectation:
+\[
+M'(\theta)
+=\E\!\left[Y\cdot \frac{Y}{\sigma^2}\cdot \frac{1}{\cosh^2\!\left(\frac{\theta Y}{\sigma^2}\right)}\right]
+=\E\!\left[\frac{Y^2}{\sigma^2}\cdot \frac{1}{\cosh^2\!\left(\frac{\theta Y}{\sigma^2}\right)}\right].
+\]
+
+\emph{Part (3).}
+At $\theta=0$, $\cosh^2(0)=1$, so $M'(0)=\E[Y^2]/\sigma^2$.
+Under $Y=Z\theta^\star+\varepsilon$ with $Z^2=1$ and $\varepsilon\perp Z$,
+\[
+\E[Y^2]=\E[(Z\theta^\star+\varepsilon)^2]=(\theta^\star)^2+\sigma^2,
+\]
+so
+\[
+M'(0)=\frac{(\theta^\star)^2+\sigma^2}{\sigma^2}=1+\left(\frac{\theta^\star}{\sigma}\right)^2>1.
+\]
+Hence $0$ is a locally unstable fixed point.%
+}
+
+\Cref{fig:em-operator-fixed-points} now has a precise interpretation:
+the graph shown there is exactly the map derived above.
+The fixed points are its intersections with the diagonal.
+Because the model is symmetric, the population log-likelihood has two equivalent maximizers $\pm\theta^\star$, and the sign of the initialization determines which one the iterates approach.
+Here that nonconvexity is benign: the two limits differ only by label swapping, so they represent the same fitted mixture distribution.
+Larger separation does not change the basin picture; it changes the rate of refinement within each basin.
+
+\subsubsection{Global convergence of population EM in one dimension}
+\label{subsubsec:gmm-global-population}
+
+\Cref{fig:em-operator-fixed-points} suggests something stronger than local contraction near $\pm\theta^\star$: in one dimension, every initialization with the correct sign appears to converge to the corresponding population maximizer.
+This is true, and it is a rare example where population EM admits a clean global guarantee.
+
+To connect this claim with the literature, write the update map as a two-argument function.
+For any $m>0$, let
+\[
+Y_m \sim \tfrac12\,\mathcal{N}(m,\sigma^2) + \tfrac12\,\mathcal{N}(-m,\sigma^2),
+\qquad
+M(\theta; m)\coloneqq \E\!\left[Y_m\,\tanh\!\left(\frac{\theta Y_m}{\sigma^2}\right)\right].
+\]
+Our population EM map is $\theta\mapsto M(\theta;\theta^\star)$, and (by the fixed point lemma) $M(m;m)=m$.
+
+\begin{proposition}[Sign determines the basin in the 1D symmetric mixture]
+\label{prop:gmm-global-population-sign-basin}
+Assume $\theta^\star>0$.
+Let $\theta^{(t+1)}=M(\theta^{(t)};\theta^\star)$ be the population EM iterates.
+If $\theta^{(0)}>0$, then $\theta^{(t)}>0$ for all $t$ and $\theta^{(t)}\to \theta^\star$.
+By symmetry, if $\theta^{(0)}<0$ then $\theta^{(t)}\to -\theta^\star$, and if $\theta^{(0)}=0$ then $\theta^{(t)}=0$ for all $t$.
+\end{proposition}
+
+\begin{proof}
+If $\theta>0$, then $y\tanh(\theta y/\sigma^2)\ge 0$ for every $y$, with strict inequality for every $y\neq 0$.
+Hence $M(\theta;\theta^\star)>0$, so positive initializations remain positive under the iteration.
+The convergence claims are then exactly the one-dimensional specialization of \citet[Thms.~1--2]{xu_hsu_maleki_2016_global_em}: in one dimension, the sign condition $\ip{\theta^{(0)}}{\theta^\star}\gtrless 0$ reduces to $\theta^{(0)}\gtrless 0$, so the cited theorem says the population iterates converge to the corresponding signed maximizer, while the zero initialization remains at the unstable fixed point $0$.
+\end{proof}
+
+The same reference proves the higher-dimensional analogue, where the basin is determined by the sign of the inner product $\ip{\theta^{(0)}}{\theta^\star}$ rather than by the sign of a scalar initialization; see \citet[Thms.~1--2]{xu_hsu_maleki_2016_global_em}.
+
+In one dimension, local contractivity near a fixed point is captured by the slope $|M'(\theta^\star)|$: smaller slope means faster refinement.
+Since $M(\theta)=\E\!\left[Y\tanh\!\left(\frac{\theta Y}{\sigma^2}\right)\right]$ and $\frac{d}{du}\tanh(u)=\frac{1}{\cosh^2(u)}$, we can differentiate under the expectation to get
+\[
+M'(\theta)
+=
+\E\!\left[\frac{Y^2}{\sigma^2}\cdot \frac{1}{\cosh^2\!\left(\frac{\theta Y}{\sigma^2}\right)}\right].
+\]
+\Cref{fig:em-contraction-vs-snr} plots this slope as a function of the signal-to-noise ratio $\theta^\star/\sigma$ for the Gaussian mixture.
+Separation plays the role of a \emph{conditioning parameter} for EM: when $\theta^\star/\sigma$ is large, responsibilities are close to $0$--$1$ under the true model and the map is strongly contractive, so refinement is fast; when $\theta^\star/\sigma$ is small, responsibilities stay near $1/2$ and the slope approaches $1$, so linear convergence becomes extremely slow.
+Importantly, this ``slow EM'' regime is not a mysterious algorithmic failure---it reflects the fact that the statistical model itself becomes less distinctive as $\theta^\star/\sigma\to 0$:
+the mixture distribution approaches a single Gaussian, so many parameter values yield almost the same observed-data likelihood and there is little signal for any method to exploit.
+In other words, low separation is often ``easy'' in a \emph{model-fit} sense (many parameter values fit about equally well), but ``hard'' in a \emph{parameter-estimation} sense (it is difficult to reliably recover the tiny component separation).
+
+\begin{lemma}[A simple sufficient condition for local contractivity]
+\label{lem:gmm-contractive-region}
+For any $\theta\neq 0$, the derivative satisfies
+\[
+0< M'(\theta) \le \frac{4e^{-2}\sigma^2}{\theta^2}.
+\]
+In particular, if $\theta^\star \ge \frac{4\sigma}{e}$, then $M$ is a contraction on the interval $\big[\frac{\theta^\star}{2},\frac{3\theta^\star}{2}\big]$ with contraction factor
+\[
+\kappa \le \frac{16e^{-2}\sigma^2}{(\theta^\star)^2} < 1.
+\]
+\end{lemma}
+
+\clearpage
+\begin{exercise}[Proving \Cref{lem:gmm-contractive-region}]
+\label{ex:gmm-contractive-region}
+Prove \Cref{lem:gmm-contractive-region}.
+\emph{Hint:} start from $M'(\theta)=\E\!\left[\frac{Y^2}{\sigma^2}\cosh^{-2}\!\left(\frac{\theta Y}{\sigma^2}\right)\right]$,
+use $\cosh(u)\ge \tfrac12 e^{|u|}$, and then maximize $y^2e^{-by}$ over $y\ge 0$ for $b>0$.
+\end{exercise}
+
+\SolutionBox[22]{%
+Starting from
+\[
+M'(\theta)
+=
+\E\!\left[\frac{Y^2}{\sigma^2}\cdot \frac{1}{\cosh^2\!\left(\frac{\theta Y}{\sigma^2}\right)}\right],
+\]
+use $\cosh(u)\ge \tfrac12 e^{|u|}$ to obtain $\cosh^{-2}(u)\le 4e^{-2|u|}$.
+Hence,
+\[
+M'(\theta)
+\le
+\frac{4}{\sigma^2}\E\!\left[Y^2\exp\!\left(-\frac{2|\theta|\,|Y|}{\sigma^2}\right)\right].
+\]
+Fix $b>0$.  For $y\ge 0$, the function $y\mapsto y^2e^{-by}$ has derivative $e^{-by}(2y-by^2)$, so it is maximized at $y=2/b$ with value $4e^{-2}/b^2$.
+Therefore $Y^2e^{-b|Y|}\le 4e^{-2}/b^2$ almost surely, and with $b=\frac{2|\theta|}{\sigma^2}$ we get
+\[
+M'(\theta)
+\le
+\frac{4}{\sigma^2}\cdot \frac{4e^{-2}}{b^2}
+=
+\frac{4e^{-2}\sigma^2}{\theta^2}.
+\]
+If $\theta^\star\ge \frac{4\sigma}{e}$ and $\theta\in[\theta^\star/2,3\theta^\star/2]$, then $|\theta|\ge \theta^\star/2$ and the bound gives
+\[
+\sup_{\theta\in[\theta^\star/2,3\theta^\star/2]} M'(\theta)
+\le
+\frac{16e^{-2}\sigma^2}{(\theta^\star)^2}
+<1,
+\]
+so $M$ is a contraction on this interval with contraction factor $\kappa\le 16e^{-2}\sigma^2/(\theta^\star)^2$.%
+}
+
+\begin{figure}[t]
+  \centering
+  \input{figures/handouts/em_algorithm/fig_em_contraction_vs_snr}
+  \caption{Local contraction factor $|M'(\theta^\star)|$ for population EM in the symmetric two-component Gaussian mixture, as a function of the signal-to-noise ratio $\theta^\star/\sigma$. Larger separation leads to much stronger contractivity near the population maximizer, hence faster refinement once initialized in the correct basin.}
+  \label{fig:em-contraction-vs-snr}
+\end{figure}
+
+\subsection{Local theory near a good fixed point}
+\label{subsec:em-population-contractivity-template}
+
+The Gaussian-mixture example already contains the shape of a general EM theorem.
+Likelihood ascent is only part of the story.
+It says that EM does not decrease the observed-data likelihood, but it does not say whether the initialization lies in the basin of a desirable fixed point, whether the population map pulls the iterates back once they are near that point, or whether finite-sample noise distorts that picture.
+That is why useful EM results are usually local.
+
+To study the local behavior near a good population fixed point $\theta^\star$, freeze the second argument of the surrogate at $\theta^\star$ and define
+\[
+q(\theta') \coloneqq Q(\theta' \mid \theta^\star).
+\]
+This is the surrogate EM would maximize if the E-step already used the correct posterior law.
+From that viewpoint, the local theory is built out of two ideas.
+First, the ideal objective $q$ should have enough curvature near $\theta^\star$ that maximizing it would correct small perturbations away from the target.
+Second, the E-step should be stable: replacing $\theta^\star$ by a nearby iterate $\theta$ should not change the surrogate gradient too much.
+If both statements hold, then the true EM map behaves like a perturbed maximization of $q$, so one can prove contraction for the population map and then transfer that result to the sample map by a perturbation argument.
+The next definitions write those two ideas in a form suitable for the proof.
+
+\begin{definition}[Local strong concavity]
+\label{def:em-local-strong-concavity}
+Fix $r>0$ and define the ball $B_r(\theta^\star)\coloneqq\{\theta\in\Theta:\norm{\theta-\theta^\star}_2\le r\}$.
+We say $q$ is \textbf{$\lambda$-strongly concave on $B_r(\theta^\star)$} if for all $\theta_1,\theta_2\in B_r(\theta^\star)$,
+\[
+q(\theta_1)
+\le
+q(\theta_2)
+\;+\;
+\ip{\nabla q(\theta_2)}{\theta_1-\theta_2}
+\;-\;
+\frac{\lambda}{2}\norm{\theta_1-\theta_2}_2^2.
+\]
+\end{definition}
+
+\begin{definition}[First-order stability (FOS)]
+\label{def:em-fos}
+Fix $r>0$.
+We say the population $Q$-functions satisfy \textbf{$\mathrm{FOS}(\gamma)$ on $B_r(\theta^\star)$} if for all $\theta\in B_r(\theta^\star)$,
+\[
+\norm{\nabla_{\theta'} Q(M(\theta)\mid \theta^\star)-\nabla_{\theta'} Q(M(\theta)\mid \theta)}_2
+\le
+\gamma \norm{\theta-\theta^\star}_2.
+\]
+\end{definition}
+
+\begin{theorem}[FOS + strong concavity $\Rightarrow$ contraction of population EM]
+\label{thm:em-fos-implies-contraction}
+Fix $r>0$ and define $B_r(\theta^\star)$ as in \Cref{def:em-local-strong-concavity}.
+Assume:
+\begin{enumerate}[leftmargin=*]
+  \item $\theta^\star$ is self-consistent, meaning $M(\theta^\star)=\theta^\star$.
+  \item $q(\cdot)=Q(\cdot\mid\theta^\star)$ is $\lambda$-strongly concave on $B_r(\theta^\star)$.
+  \item $\mathrm{FOS}(\gamma)$ holds on $B_r(\theta^\star)$ for some $\gamma\in[0,\lambda)$.
+  \item For all $\theta\in B_r(\theta^\star)$, the update $M(\theta)$ also lies in $B_r(\theta^\star)$.
+  \item $\theta^\star$ is an interior maximizer of $q$, and for each $\theta\in B_r(\theta^\star)$ the EM update $M(\theta)$ is an interior maximizer of $\theta'\mapsto Q(\theta'\mid\theta)$, so that
+  \[
+  \nabla q(\theta^\star)=0,
+  \qquad
+  \nabla_{\theta'} Q(M(\theta)\mid\theta)=0.
+  \]
+\end{enumerate}
+Then $M$ is contractive on $B_r(\theta^\star)$ with contraction factor $\kappa=\gamma/\lambda$:
+\[
+\norm{M(\theta)-\theta^\star}_2
+\le
+\frac{\gamma}{\lambda}\norm{\theta-\theta^\star}_2
+\qquad\text{for all }\theta\in B_r(\theta^\star).
+\]
+\end{theorem}
+
+\begin{proof}
+Fix $\theta\in B_r(\theta^\star)$ and write $\bar\theta \coloneqq M(\theta)$.
+By local invariance, $\bar\theta\in B_r(\theta^\star)$.
+By \Cref{def:em-local-strong-concavity}, the function $-q$ is $\lambda$-strongly convex on $B_r(\theta^\star)$, so for all $u,v\in B_r(\theta^\star)$,
+\[
+\ip{\nabla q(u)-\nabla q(v)}{u-v}
+\le
+-\lambda\norm{u-v}_2^2,
+\]
+and therefore, by Cauchy--Schwarz,
+\[
+\lambda\norm{u-v}_2
+\le
+\norm{\nabla q(u)-\nabla q(v)}_2.
+\]
+Apply this with $u=\bar\theta$ and $v=\theta^\star$, and use $\nabla q(\theta^\star)=0$, to obtain
+\[
+\lambda\norm{\bar\theta-\theta^\star}_2
+\le
+\norm{\nabla q(\bar\theta)}_2
+=
+\norm{\nabla_{\theta'} Q(\bar\theta\mid\theta^\star)}_2.
+\]
+By the interior optimality condition $\nabla_{\theta'} Q(\bar\theta\mid\theta)=0$ and $\mathrm{FOS}(\gamma)$,
+\[
+\norm{\nabla_{\theta'} Q(\bar\theta\mid\theta^\star)}_2
+=
+\norm{\nabla_{\theta'} Q(\bar\theta\mid\theta^\star)-\nabla_{\theta'} Q(\bar\theta\mid\theta)}_2
+\le
+\gamma\norm{\theta-\theta^\star}_2.
+\]
+Combine the last two displays and divide by $\lambda$.
+\end{proof}
+
+In words, strong concavity tells us that the ideal M-step would correct deviations from $\theta^\star$, while FOS says the real E-step does not distort that ideal picture too much.
+If FOS fails badly, then changing the current iterate can change the posterior weights so much that the update map loses its restorative pull.
+
+\subsubsection{Gradient EM: an inexact M-step}
+\label{subsec:em-gradient-em}
+
+In large models, the exact maximization step defining $M(\theta)$ can be expensive.
+A common alternative is to take one gradient ascent step on the surrogate $Q(\cdot\mid\theta)$ starting from $\theta$.
+At the population level, this defines the \emph{gradient EM} operator
+\[
+G(\theta)\coloneqq \theta + \alpha\,\nabla_{\theta'} Q(\theta\mid\theta),
+\]
+where $\alpha>0$ is a step size.
+(The sample version replaces $Q$ by $Q_n$.)
+
+If we could take gradient ascent on the ideal objective $q(\theta)=Q(\theta\mid\theta^\star)$ directly, then strong concavity and smoothness would give a contraction for an appropriate step size; see \citep[\S9.2]{boyd_vandenberghe_2004_convex}.
+Gradient EM behaves similarly when the surrogate gradient is stable near $\theta^\star$.
+
+\begin{definition}[Gradient stability (GS)]
+\label{def:em-gs}
+Fix $r>0$.
+We say the population $Q$-functions satisfy \textbf{$\mathrm{GS}(\gamma)$ on $B_r(\theta^\star)$} if for all $\theta\in B_r(\theta^\star)$,
+\[
+\norm{\nabla_{\theta'} Q(\theta\mid \theta^\star)-\nabla_{\theta'} Q(\theta\mid \theta)}_2
+\le
+\gamma \norm{\theta-\theta^\star}_2.
+\]
+\end{definition}
+
+\begin{theorem}[GS + strong concavity $\Rightarrow$ contraction of gradient EM]
+\label{thm:em-gs-implies-contraction}
+Fix $r>0$ and assume:
+\begin{enumerate}[leftmargin=*]
+  \item $q(\cdot)=Q(\cdot\mid\theta^\star)$ is $\lambda$-strongly concave and $L$-smooth on $B_r(\theta^\star)$, with $0<\lambda\le L$.
+  \item $\mathrm{GS}(\gamma)$ holds on $B_r(\theta^\star)$ for some $\gamma\in[0,\lambda)$.
+  \item $\theta^\star$ is an interior maximizer of $q$, so $\nabla q(\theta^\star)=0$.
+\end{enumerate}
+Then gradient EM with step size $\alpha=\frac{2}{L+\lambda}$ is contractive on $B_r(\theta^\star)$:
+\[
+\norm{G(\theta)-\theta^\star}_2
+\le
+\left(\frac{L-\lambda+2\gamma}{L+\lambda}\right)\norm{\theta-\theta^\star}_2
+\qquad\text{for all }\theta\in B_r(\theta^\star).
+\]
+\end{theorem}
+
+\begin{proof}
+Write $G(\theta)-\theta^\star$ as
+\[
+\underbrace{\theta + \alpha \nabla q(\theta)-\theta^\star}_{\text{gradient ascent on $q$}}
+\;+\;
+\alpha\underbrace{\bigl(\nabla_{\theta'} Q(\theta\mid\theta)-\nabla_{\theta'} Q(\theta\mid\theta^\star)\bigr)}_{\text{stability error}}.
+\]
+For $\alpha=\frac{2}{L+\lambda}$, gradient ascent on a $\lambda$-strongly concave, $L$-smooth function is a contraction mapping with factor $\frac{L-\lambda}{L+\lambda}$ (equivalently, apply the standard strongly convex result to $-q$).
+Combine this with \Cref{def:em-gs} and $\alpha=\frac{2}{L+\lambda}$ to get
+\[
+\norm{G(\theta)-\theta^\star}_2
+\le
+\left(\frac{L-\lambda}{L+\lambda} + \frac{2\gamma}{L+\lambda}\right)\norm{\theta-\theta^\star}_2,
+\]
+which is the claim.
+\end{proof}
+
+Once a population contraction factor is available for either exact EM or gradient EM, the sample-level picture follows from a perturbation argument.
+
+\begin{lemma}[Contraction + perturbation $\Rightarrow$ convergence to a neighborhood]
+\label{lem:contraction-perturbation}
+Fix a point $\theta^\star\in\Theta$ and a radius $r>0$.
+Assume:
+\begin{enumerate}[leftmargin=*]
+  \item $M(\theta^\star)=\theta^\star$ and, for all $\theta$ with $\norm{\theta-\theta^\star}_2\le r$,
+  \[
+  \norm{M(\theta)-\theta^\star}_2 \le \kappa \norm{\theta-\theta^\star}_2
+  \quad\text{for some }\kappa\in(0,1).
+  \]
+  \item For all $\theta$ with $\norm{\theta-\theta^\star}_2\le r$,
+  \[
+  \norm{M_n(\theta)-M(\theta)}_2 \le \varepsilon_n.
+  \]
+\end{enumerate}
+Then any iterate sequence $\theta^{t+1}=M_n(\theta^t)$ that remains in the ball satisfies
+\[
+\norm{\theta^t-\theta^\star}_2
+\le
+\kappa^t \norm{\theta^0-\theta^\star}_2 + \frac{\varepsilon_n}{1-\kappa}.
+\]
+\end{lemma}
+
+\begin{proof}
+Write
+\[
+\norm{\theta^{t+1}-\theta^\star}_2
+\le
+\norm{M(\theta^t)-\theta^\star}_2 + \norm{M_n(\theta^t)-M(\theta^t)}_2
+\le
+\kappa\norm{\theta^t-\theta^\star}_2 + \varepsilon_n,
+\]
+then unroll the recursion.
+\end{proof}
+
+\Cref{lem:contraction-perturbation} is the core population-to-sample message.
+Inside a basin where the sample map stays uniformly close to the population map, optimization error decays geometrically until it reaches a floor of order $\varepsilon_n/(1-\kappa)$.
+Equivalently, sample EM converges to the sample fixed point in its basin, while the gap between that sample target and the population target is the residual statistical error.
+
+\subsection{Finite-sample EM: geometric decay until a floor}
+\label{sec:finite-sample-floor}
+
+At finite $n$, the operator $M_n$ fluctuates around $M$.
+In a neighborhood where $M$ is contractive and $M_n$ is uniformly close to $M$, \Cref{lem:contraction-perturbation} gives geometric decay until the remaining error is on the order of $1/\sqrt{n}$.
+
+\begin{figure}[t]
+  \centering
+  \input{figures/handouts/em_algorithm/fig_em_population_vs_sample_convergence}
+  \caption{Distance to $\theta^\star$ versus EM iteration in the Gaussian mixture example. Population EM converges linearly to $\theta^\star$. Sample EM tracks the population dynamics until it reaches a sample-dependent floor.}
+  \label{fig:em-pop-vs-sample}
+\end{figure}
+
+In this example, once the initialization lands in the correct basin, the population map is contractive and the sample map tracks it until the iterate reaches an $n$-dependent statistical floor.
+Separation does not change which basin is correct; it changes the speed of refinement inside that basin.
+
+A systematic development of this population-to-sample contraction argument appears in \citet[Thm.~1]{balakrishnan_wainwright_yu_2014_em}.
+Moreover, this two-Gaussian mixture is one of the rare latent-variable models where much stronger \emph{global} guarantees are possible; see, e.g., \citet[Thm.~1]{xu_hsu_maleki_2016_global_em}.
+
+\clearpage
+% ------------------------------------------------------------
+\section[Missing covariates]{Example III: regression with missing covariates}
+\label{sec:missing-covariates}
+
+EM is also natural outside mixture models whenever part of the data is latent or unobserved.
+A basic example is linear regression with covariates missing completely at random.
+Let $X\in\R^d$ and $Y\in\R$ follow the population model
+\[
+X \sim \mathcal{N}(0,I_d),
+\qquad
+Y = \ip{X}{\theta^\star} + \varepsilon,
+\qquad
+\varepsilon \sim \mathcal{N}(0,\sigma^2)\ \text{independent of }X,
+\]
+and suppose we observe $Y$ but only a subset of the coordinates of $X$.
+Formally, each coordinate is missing with probability $\rho\in[0,1)$, independently across coordinates and samples.
+The missing coordinates are treated as latent variables, so EM alternates between imputing them from the conditional law of $X$ given $(X_{\mathrm{obs}},Y)$ and refitting $\theta'$ by weighted least squares using the conditional moments $\E[X\mid X_{\mathrm{obs}},Y,\theta]$ and $\E[XX^\top\mid X_{\mathrm{obs}},Y,\theta]$.
+
+This example complements the Gaussian mixture.
+In the mixture model, weak separation mainly makes the EM map flatter near the correct target.
+Here the more basic issue is that the E-step literally fills in unseen coordinates using the \emph{current} parameter.
+If $\theta$ is already close to $\theta^\star$, those imputations are helpful.
+If $\theta$ points in a badly wrong direction and the missingness level is high, the imputations can reinforce that wrong direction, so the map itself can develop a bad stable fixed point.
+
+\subsection{Missingness and identifiability}
+\label{subsec:missing-covariates-identifiability-limit}
+
+As $\rho$ increases, fewer coordinates of $X$ are observed, the E-step becomes less informative, and both optimization and statistical estimation become harder.
+
+The extreme case $\rho=1$ shows the identifiability issue most clearly.
+If all covariates are missing, then the observed data are only the responses $\{Y_i\}_{i=1}^n$.
+Because $X\sim\mathcal{N}(0,I_d)$, for any parameter $\theta$ we have $\ip{X}{\theta}\sim \mathcal{N}(0,\norm{\theta}_2^2)$, so
+\[
+Y \mid \theta
+\sim
+\mathcal{N}\!\big(0,\norm{\theta}_2^2+\sigma^2\big).
+\]
+Therefore the distribution of the observed data depends on $\theta$ only through $\norm{\theta}_2$.
+In particular, the direction of $\theta^\star$ is \emph{not identifiable}: any $\tilde\theta$ with $\norm{\tilde\theta}_2=\norm{\theta^\star}_2$ produces the same law for $Y$.
+No algorithm (EM included) can recover what the data do not contain; at best, one can hope to estimate $\norm{\theta^\star}_2$.
+\Cref{fig:em-nonidentifiability-ridge} gives a schematic picture.
+
+\begin{figure}[t]
+  \centering
+  \input{figures/handouts/em_algorithm/fig_em_nonidentifiability_ridge}
+  \caption{Non-identifiability in the ``noise-only'' limit.  When $\rho=1$, we never observe any coordinates of $X$, and the marginal law is $Y\mid\theta\sim\mathcal{N}(0,\norm{\theta}_2^2+\sigma^2)$.  Hence all parameters on a sphere $\{\theta:\norm{\theta}_2=\text{const}\}$ induce the same distribution of $Y$, so there cannot be a contraction toward a unique maximizer.}
+  \label{fig:em-nonidentifiability-ridge}
+\end{figure}
+
+This illustrates a different failure mode than low separation in mixtures.
+In Example II, low separation mainly means weak identification and poor conditioning: there is a well-defined population target up to the sign symmetry, but the likelihood is relatively flat and the EM contraction factor is close to $1$, so refinement is slow and statistical accuracy requires very large $n$.
+Here, increasing missingness pushes the statistical problem itself toward non-identifiability, so EM no longer has a unique population target to contract toward.
+
+\subsection{Deriving the EM operator in closed form}
+\label{subsec:missing-covariates-derivation}
+
+Because the model is Gaussian, the E-step conditional moments can be written explicitly and the M-step reduces to a linear system.
+These formulas show exactly where the self-reinforcement enters:
+the posterior moments used in the E-step depend on the current iterate $\theta$, so the regression problem solved by the M-step is built out of \emph{imputed} covariates that already reflect the current belief.
+
+\subsubsection{E-step: conditional moments from a joint Gaussian}
+\label{subsubsec:missing-covariates-estep}
+
+Fix one observation $(x_{\mathrm{obs}},y)$ and let $O\subseteq\{1,\dots,d\}$ be the set of observed coordinates, with $M$ its complement.
+Write the parameter and covariate vector in blocks $\theta=(\theta_M,\theta_O)$ and $X=(X_M,X_O)$.
+Conditioned on $X_O=x_O$, the scalar response model under parameter $\theta$ is
+\[
+Y = \ip{\theta_O}{x_O} + \ip{\theta_M}{X_M} + \varepsilon,
+\qquad
+X_M\sim\mathcal{N}(0,I),
+\qquad
+\varepsilon\sim\mathcal{N}(0,\sigma^2),
+\]
+so $X_M\mid (X_O=x_O,Y=y,\theta)$ is the Gaussian posterior in a one-dimensional linear measurement model.
+A standard conditioning calculation (e.g.\ via Sherman--Morrison) yields
+\begin{align}
+\label{eq:missing-covariates-posterior-mean}
+\E[X_M\mid x_O,y,\theta]
+&=
+\frac{\theta_M}{\sigma^2+\norm{\theta_M}_2^2}\,\Big(y-\ip{\theta_O}{x_O}\Big), \\
+\label{eq:missing-covariates-posterior-cov}
+\mathrm{Cov}(X_M\mid x_O,y,\theta)
+&=
+I-\frac{\theta_M\theta_M^\top}{\sigma^2+\norm{\theta_M}_2^2}.
+\end{align}
+
+Define the conditional mean and second moment of the \emph{full} covariate vector,
+\[
+\mu_\theta(x_{\mathrm{obs}},y)\coloneqq \E[X\mid X_{\mathrm{obs}}=x_{\mathrm{obs}},Y=y,\theta],
+\qquad
+\Sigma_\theta(x_{\mathrm{obs}},y)\coloneqq \E[XX^\top\mid X_{\mathrm{obs}}=x_{\mathrm{obs}},Y=y,\theta].
+\]
+Then $\mu_\theta$ agrees with the observed coordinates and uses \eqref{eq:missing-covariates-posterior-mean} for the missing coordinates:
+\[
+(\mu_\theta)_O = x_O,
+\qquad
+(\mu_\theta)_M = \E[X_M\mid x_O,y,\theta].
+\]
+Similarly, $\Sigma_\theta$ is obtained by combining the posterior covariance \eqref{eq:missing-covariates-posterior-cov} with the rank-one term from the posterior mean:
+\[
+(\Sigma_\theta)_{MM}
+=
+\mathrm{Cov}(X_M\mid x_O,y,\theta) + \E[X_M\mid x_O,y,\theta]\E[X_M\mid x_O,y,\theta]^\top,
+\qquad
+(\Sigma_\theta)_{OO}=x_Ox_O^\top,
+\]
+and the cross moments satisfy $(\Sigma_\theta)_{MO}=\E[X_M\mid x_O,y,\theta]\,x_O^\top$ and $(\Sigma_\theta)_{OM}=x_O\,\E[X_M\mid x_O,y,\theta]^\top$.
+
+\clearpage
+This Gaussian-conditioning algebra is the exact E-step calculation underlying the formulas above.
+\begin{exercise}[Deriving the E-step conditional moments in the missing-covariates model]
+\label{ex:missing-covariates-estep}
+In \Cref{subsubsec:missing-covariates-estep}, fix a set of observed coordinates $O$ with complement $M$, and fix one observation $(x_O,y)$.
+Consider the linear-Gaussian model
+\[
+X_M\sim\mathcal{N}(0,I),
+\qquad
+Y=\ip{\theta_O}{x_O}+\ip{\theta_M}{X_M}+\varepsilon,
+\qquad
+\varepsilon\sim\mathcal{N}(0,\sigma^2)\ \text{independent of }X_M.
+\]
+Show that the posterior is Gaussian with mean and covariance
+\[
+\E[X_M\mid x_O,y,\theta]=\frac{\theta_M}{\sigma^2+\norm{\theta_M}_2^2}\,\Big(y-\ip{\theta_O}{x_O}\Big),
+\qquad
+\mathrm{Cov}(X_M\mid x_O,y,\theta)=I-\frac{\theta_M\theta_M^\top}{\sigma^2+\norm{\theta_M}_2^2}.
+\]
+\emph{Hint:} write $(X_M,\;Y-\ip{\theta_O}{x_O})$ as a jointly Gaussian pair and use the standard conditional Gaussian formula.
+\end{exercise}
+
+\SolutionBox[18]{%
+This is the standard conditional-Gaussian calculation behind the E-step.
+Define the centered scalar $\tilde Y\coloneqq Y-\ip{\theta_O}{x_O}=\ip{\theta_M}{X_M}+\varepsilon$.
+Then $(X_M,\tilde Y)$ is jointly Gaussian with
+\[
+\E[X_M]=0,
+\qquad
+\E[\tilde Y]=0,
+\qquad
+\mathrm{Cov}(X_M)=I.
+\]
+Moreover,
+\[
+\mathrm{Cov}(X_M,\tilde Y)
+=
+\E[X_M(\theta_M^\top X_M+\varepsilon)]
+=
+\E[X_M X_M^\top]\theta_M
+=\theta_M,
+\]
+and
+\[
+\mathrm{Var}(\tilde Y)
+=
+\mathrm{Var}(\theta_M^\top X_M)+\mathrm{Var}(\varepsilon)
+=
+\norm{\theta_M}_2^2+\sigma^2.
+\]
+For a jointly Gaussian pair $(U,V)$ with $\mathrm{Var}(V)>0$, the conditional law is
+\[
+U\mid(V=v)\sim \mathcal{N}\!\left(\mathrm{Cov}(U,V)\,\mathrm{Var}(V)^{-1}v,\;\mathrm{Cov}(U)-\mathrm{Cov}(U,V)\,\mathrm{Var}(V)^{-1}\mathrm{Cov}(V,U)\right).
+\]
+Apply this with $U=X_M$ and $V=\tilde Y$ to obtain
+\[
+\E[X_M\mid \tilde Y=\tilde y]=\frac{\theta_M}{\sigma^2+\norm{\theta_M}_2^2}\,\tilde y,
+\qquad
+\mathrm{Cov}(X_M\mid \tilde Y)=I-\frac{\theta_M\theta_M^\top}{\sigma^2+\norm{\theta_M}_2^2}.
+\]
+Substitute $\tilde y=y-\ip{\theta_O}{x_O}$ to match \eqref{eq:missing-covariates-posterior-mean}--\eqref{eq:missing-covariates-posterior-cov}.%
+}
+\subsubsection{M-step: a quadratic \texorpdfstring{$Q_n$}{Qn} and a linear system}
+\label{subsubsec:missing-covariates-mstep}
+
+The complete-data log-likelihood for a single pair $(x,y)$ is
+\[
+\log f_{\theta'}(x,y)
+=
+C
+-\frac{1}{2}\norm{x}_2^2
+-\frac{1}{2\sigma^2}\big(y-\ip{x}{\theta'}\big)^2.
+\]
+In the $Q$-function, we take the conditional expectation over the missing covariates under the current iterate $\theta$.
+The term $\norm{x}_2^2$ does not depend on $\theta'$, and the factor $1/\sigma^2$ does not affect the argmax, so it is enough to expand the expected squared error.
+For one observation,
+\begin{align*}
+\E\Big[\big(y-\ip{X}{\theta'}\big)^2\mid x_{\mathrm{obs}},y,\theta\Big]
+&=
+y^2 - 2y\,\ip{\E[X\mid x_{\mathrm{obs}},y,\theta]}{\theta'}
+  + \E\big[\theta'^\top XX^\top \theta'\mid x_{\mathrm{obs}},y,\theta\big] \\
+&=
+y^2 - 2y\,\ip{\mu_\theta(x_{\mathrm{obs}},y)}{\theta'}
+  + \theta'^\top \Sigma_\theta(x_{\mathrm{obs}},y)\,\theta'.
+\end{align*}
+Summing over samples, and dropping additive constants that do not affect the maximizer, yields the quadratic form
+\[
+Q_n(\theta'\mid\theta)
+=
+-\frac{1}{2n}\sum_{i=1}^n
+\Big(\theta'^\top \Sigma_\theta(x_{\mathrm{obs},i},y_i)\,\theta'
+-2y_i\,\ip{\mu_\theta(x_{\mathrm{obs},i},y_i)}{\theta'}\Big).
+\]
+Taking a gradient in $\theta'$ and setting it equal to zero gives a linear system for the M-step:
+\[
+\left(\frac{1}{n}\sum_{i=1}^n \Sigma_\theta(x_{\mathrm{obs},i},y_i)\right)\theta'
+=
+\frac{1}{n}\sum_{i=1}^n y_i\,\mu_\theta(x_{\mathrm{obs},i},y_i),
+\]
+so, whenever the averaged conditional second-moment matrix is invertible, the unique sample M-step is
+\[
+M_n(\theta)
+=
+\left(\frac{1}{n}\sum_{i=1}^n \Sigma_\theta(x_{\mathrm{obs},i},y_i)\right)^{-1}
+\left(\frac{1}{n}\sum_{i=1}^n y_i\,\mu_\theta(x_{\mathrm{obs},i},y_i)\right).
+\]
+The population operator $M$ has the same form with empirical averages replaced by expectations, again when the corresponding population matrix is nonsingular.
+Here the relationship between $M$ and $M_n$ is direct: $M_n$ is the perturbation produced by replacing expectations with sample averages.
+
+As a useful check, if there is no missingness ($\rho=0$), then $\mu_\theta(x_{\mathrm{obs}},y)=x$ and $\Sigma_\theta(x_{\mathrm{obs}},y)=xx^\top$ regardless of $\theta$, so $M_n(\theta)$ reduces to ordinary least squares and does not depend on the current iterate.
+
+\subsubsection{A one-dimensional verification: explicit population map and local slope}
+\label{subsubsec:missing-covariates-1d-check}
+
+The full verification of contractivity for the missing-covariates model is algebraically involved in general dimension.
+In one dimension the population EM map has a closed form, so the stability calculation can be carried out directly.
+As in the Gaussian mixture, the population objective $q(\theta')=Q(\theta'\mid\theta^\star)$ is a concave quadratic in $\theta'$ with Hessian $-\sigma^{-2}I$, so the main issue is not the local geometry of $q$ but the stability of the E-step as $\theta$ varies.
+
+Assume $d=1$.
+Each sample either reveals $X$ (with probability $1-\rho$) or hides it (with probability $\rho$), and we always observe $Y=\theta^\star X+\varepsilon$.
+When $X$ is missing, the E-step uses the Gaussian posterior under the current iterate $\theta$:
+\[
+X\mid (Y=y,\theta) \sim \mathcal{N}\!\left(\frac{\theta}{\theta^2+\sigma^2}y,\;\frac{\sigma^2}{\theta^2+\sigma^2}\right),
+\]
+so
+\[
+\mu_\theta(y) \coloneqq \E[X\mid Y=y,\theta] = \frac{\theta}{\theta^2+\sigma^2}y,
+\qquad
+\Sigma_\theta(y) \coloneqq \E[X^2\mid Y=y,\theta]
+=
+\frac{\sigma^2}{\theta^2+\sigma^2}+\mu_\theta(y)^2.
+\]
+When $X$ is observed, we simply have $\mu_\theta(x,y)=x$ and $\Sigma_\theta(x,y)=x^2$.
+
+At the population level, the M-step takes the same linear-system form as above, which in one dimension simplifies to
+\[
+M(\theta)
+=
+\frac{\E\!\left[Y\,\mu_\theta(X_{\mathrm{obs}},Y)\right]}{\E\!\left[\Sigma_\theta(X_{\mathrm{obs}},Y)\right]}.
+\]
+Using the missingness decomposition and the identities
+$\E[YX]=\theta^\star$, $\E[X^2]=1$, and $\E[Y^2]=(\theta^\star)^2+\sigma^2$, we obtain
+\begin{align}
+\label{eq:missing-covariates-1d-pop-map}
+M(\theta)
+&=
+\frac{(1-\rho)\,\theta^\star
+\;+\;\rho\,\frac{\theta}{\theta^2+\sigma^2}\big((\theta^\star)^2+\sigma^2\big)}
+{(1-\rho)\cdot 1
+\;+\;\rho\left(\frac{\sigma^2}{\theta^2+\sigma^2}
+\;+\;\frac{\theta^2}{(\theta^2+\sigma^2)^2}\big((\theta^\star)^2+\sigma^2\big)\right)}.
+\end{align}
+Plugging in $\theta=\theta^\star$ gives $M(\theta^\star)=\theta^\star$ (the numerator becomes $\theta^\star$ and the denominator becomes $1$).
+
+The structure of \eqref{eq:missing-covariates-1d-pop-map} is revealing.
+The fully observed fraction $(1-\rho)$ contributes a direct pull toward $\theta^\star$.
+The missing fraction $\rho$ contributes a term proportional to
+\[
+\frac{\theta}{\theta^2+\sigma^2},
+\]
+which depends on the \emph{current iterate}.
+That is the self-reinforcing part of EM in this model:
+when a covariate is unobserved, the E-step replaces it by a conditional mean whose sign and magnitude are already filtered through $\theta$.
+At small $\rho$ the observed-data pull dominates.
+At large $\rho$, the feedback through the current iterate can become strong enough to create additional fixed points.
+
+We can also differentiate \eqref{eq:missing-covariates-1d-pop-map} to quantify the local contraction factor.
+Write $M(\theta)=N(\theta)/D(\theta)$, where
+\[
+N(\theta) \coloneqq (1-\rho)\,\theta^\star + \rho\,\frac{\theta}{\theta^2+\sigma^2}\big((\theta^\star)^2+\sigma^2\big),
+\]
+and
+\[
+D(\theta)\coloneqq (1-\rho)+\rho\left(\frac{\sigma^2}{\theta^2+\sigma^2}
++\frac{\theta^2}{(\theta^2+\sigma^2)^2}\big((\theta^\star)^2+\sigma^2\big)\right).
+\]
+Then $N(\theta^\star)=\theta^\star$ and $D(\theta^\star)=1$.
+Differentiate:
+\[
+N'(\theta)
+=
+\rho\big((\theta^\star)^2+\sigma^2\big)\cdot \frac{\sigma^2-\theta^2}{(\theta^2+\sigma^2)^2},
+\]
+and
+\[
+D'(\theta)
+=
+\rho\left(
+-\frac{2\sigma^2\theta}{(\theta^2+\sigma^2)^2}
++2\big((\theta^\star)^2+\sigma^2\big)\cdot \frac{\theta(\sigma^2-\theta^2)}{(\theta^2+\sigma^2)^3}
+\right).
+\]
+Evaluating at $\theta=\theta^\star$ and using the quotient rule gives
+\[
+M'(\theta^\star)
+=
+\frac{N'(\theta^\star)D(\theta^\star)-N(\theta^\star)D'(\theta^\star)}{D(\theta^\star)^2}
+=
+N'(\theta^\star)-\theta^\star D'(\theta^\star)
+=
+\rho\,\frac{(\theta^\star)^4+\sigma^4}{\big((\theta^\star)^2+\sigma^2\big)^2}.
+\]
+In particular, since $(\theta^\star)^4+\sigma^4 \le \big((\theta^\star)^2+\sigma^2\big)^2$, we have $0<M'(\theta^\star)\le \rho$.
+In this simplest case, the local contraction factor worsens roughly linearly with the missingness probability $\rho$.
+It equals $0$ when $\rho=0$, reflecting the fact that in the fully observed model the population M-step jumps to $\theta^\star$ in one iteration.
+
+\subsubsection{A sharp counterexample: a spurious stable fixed point at high missingness}
+\label{subsubsec:missing-covariates-spurious-fixed-point}
+
+The local-slope calculation above can make it seem as if missingness only slows EM down.
+However, even in one dimension (where the model is identifiable for every $\rho<1$), the population EM map can have \emph{multiple} stable fixed points when $\rho$ is large.
+This is a genuinely nonconvex phenomenon: it is present even at the population level, so it cannot be blamed on finite-sample noise.
+
+To see this explicitly, fix $\theta^\star=1$ and $\sigma=1$.
+For $\rho=0.95$, the closed-form population map \eqref{eq:missing-covariates-1d-pop-map} becomes a rational function $M(\theta)$.
+Define $f(\theta)\coloneqq M(\theta)-\theta$.
+
+\clearpage
+\begin{exercise}[A spurious fixed point from high missingness (1D)]
+\label{ex:missing-covariates-spurious-fixed-point}
+In the one-dimensional setting with $\theta^\star=\sigma=1$ and $\rho=0.95$, consider the population map \eqref{eq:missing-covariates-1d-pop-map} and define $f(\theta)=M(\theta)-\theta$.
+\begin{enumerate}[leftmargin=*]
+  \item Compute $f(-1)$ and $f(-0.5)$, and use the intermediate value theorem to show that $M$ has a fixed point in $(-1,-0.5)$.
+  \item Compute $f(-0.1)$ and $f(0)$, and show that $M$ has a fixed point in $(-0.1,0)$.
+  \item Explain why this implies that the population map has at least three fixed points for this parameter choice.
+\end{enumerate}
+\end{exercise}
+
+\SolutionBox[22]{%
+We use the closed form \eqref{eq:missing-covariates-1d-pop-map} with $\theta^\star=\sigma=1$ and $\rho=0.95$.
+
+\emph{Part (1).}
+For $\theta=-1$, note that $\theta^2+\sigma^2=2$ and $(\theta^\star)^2+\sigma^2=2$, so the numerator is
+\[
+(1-\rho)\theta^\star+\rho\,\frac{\theta}{\theta^2+\sigma^2}\big((\theta^\star)^2+\sigma^2\big)
+=0.05\cdot 1+0.95\cdot\frac{-1}{2}\cdot 2
+=-0.9,
+\]
+and the denominator is $0.05+0.95\cdot(1/2+1/2)=1$.
+Thus $M(-1)=-0.9$ and $f(-1)=M(-1)-(-1)=0.1>0$.
+
+For $\theta=-0.5$, we have $\theta^2+\sigma^2=1.25$ and $(\theta^\star)^2+\sigma^2=2$.
+The numerator is
+\[
+0.05\cdot 1+0.95\cdot\frac{-0.5}{1.25}\cdot 2
+=0.05-0.76
+=-0.71,
+\]
+and the denominator is
+\[
+0.05+0.95\left(\frac{1}{1.25}+\frac{0.25}{1.25^2}\cdot 2\right)
+=0.05+0.95(0.8+0.32)
+=0.05+1.064
+=1.114.
+\]
+Therefore $M(-0.5)\approx -0.71/1.114\approx -0.637$ and $f(-0.5)\approx -0.137<0$.
+Since $f$ is continuous, there exists $\bar\theta\in(-1,-0.5)$ with $f(\bar\theta)=0$, i.e.\ $M(\bar\theta)=\bar\theta$.
+
+\emph{Part (2).}
+At $\theta=0$, the numerator is $(1-\rho)\theta^\star=0.05$ and the denominator is $(1-\rho)+\rho=1$, so $M(0)=0.05$ and $f(0)>0$.
+At $\theta=-0.1$, we have $\theta^2+\sigma^2=1.01$ and $(\theta^\star)^2+\sigma^2=2$.
+The numerator is
+\[
+0.05\cdot 1+0.95\cdot\frac{-0.1}{1.01}\cdot 2
+\approx 0.05-0.188
+\approx -0.138,
+\]
+and the denominator is
+\[
+0.05+0.95\left(\frac{1}{1.01}+\frac{0.01}{1.01^2}\cdot 2\right)
+\approx 0.05+0.95(0.990+0.020)
+\approx 1.009.
+\]
+Thus $M(-0.1)\approx -0.138/1.009\approx -0.137$ and $f(-0.1)\approx -0.037<0$.
+By continuity, there is a fixed point in $(-0.1,0)$.
+
+\emph{Part (3).}
+Together with the true fixed point $M(\theta^\star)=\theta^\star=1$, this shows the population map has at least three distinct fixed points for this parameter choice.%
+}
+
+\Cref{fig:em-missing-1d-spurious-fixed-points} plots $M(\theta)$ and the diagonal.
+Numerically, the three fixed points are at
+\[
+\theta^\star=1,
+\qquad
+\bar\theta_{\mathrm{bad}}\approx -0.820,
+\qquad
+\bar\theta_{\mathrm{sep}}\approx -0.056.
+\]
+Their local stability is determined by the slope $|M'(\bar\theta)|$: a fixed point is locally stable if $|M'(\bar\theta)|<1$.
+For this example, $|M'(1)|\approx 0.475$ and $|M'(\bar\theta_{\mathrm{bad}})|\approx 0.465$, so both are stable, while $|M'(\bar\theta_{\mathrm{sep}})|\approx 1.87$, so $\bar\theta_{\mathrm{sep}}$ is unstable and acts as a basin separator.
+Thus, for some initializations (e.g.\ large negative $\theta^{(0)}$), population EM converges to the \emph{wrong} stable point $\bar\theta_{\mathrm{bad}}$ rather than to $\theta^\star$.
+
+\begin{figure}[t]
+  \centering
+  \input{figures/handouts/em_algorithm/fig_em_missing_1d_spurious_fixed_points}
+  \caption{One-dimensional missing-covariates regression ($\rho=0.95$, $\theta^\star=\sigma=1$): the population EM map $M(\theta)$ intersects the diagonal at \emph{multiple} points. Two of the intersections are locally stable fixed points ($\theta^\star$ and a spurious $\bar\theta_{\mathrm{bad}}$), separated by an unstable fixed point $\bar\theta_{\mathrm{sep}}$. Cobweb plots show two initializations converging to different attractors.}
+  \label{fig:em-missing-1d-spurious-fixed-points}
+\end{figure}
+
+This example shows why EM analysis is difficult: even when the target parameter is well-defined, the population dynamics can have multiple attractors, so a global convergence theorem is impossible without additional structure.
+The mechanism is no longer mysterious:
+with heavy missingness, the E-step imputes hidden covariates using the current direction, and the M-step can then refit to those same imputations.
+That feedback loop is weak when plenty of coordinates are observed and strong when most of them are missing.
+
+Even in this Gaussian setting, the observed-data likelihood is typically nonconcave because marginalizing out missing covariates makes the effective noise depend on $\theta$.
+Still, the population EM map is often \emph{locally} stable near $\theta^\star$.
+
+For local analysis, a natural diagnostic in any dimension is the Jacobian of the population EM map:
+if $\|DM(\theta^\star)\|_2<1$, then $\theta^\star$ is a locally stable fixed point and EM contracts at roughly this rate near $\theta^\star$.
+\Cref{fig:em-missingness-contraction} plots an estimate of $\|DM(\theta^\star)\|_2$ in a two-dimensional example, as a function of the missingness probability $\rho$.
+
+\begin{figure}[t]
+  \centering
+  \input{figures/handouts/em_algorithm/fig_em_missingness_contraction}
+  \caption{Regression with missing covariates (population EM, $d=2$): the local linearization $\|DM(\theta^\star)\|_2$ increases toward $1$ as the missingness probability $\rho$ increases, meaning contractivity weakens as information disappears. The dashed line at $1$ marks the stability boundary; as $\rho\to 1$ the model becomes nearly non-identifiable (\Cref{fig:em-nonidentifiability-ridge}).}
+  \label{fig:em-missingness-contraction}
+\end{figure}
+
+\subsection{Finite-sample EM: geometric decay until a floor}
+\label{subsec:missing-covariates-finite-sample}
+
+At finite $n$, the sample EM operator $M_n$ replaces the population conditional moments in the E-step by empirical averages.
+In a neighborhood where the population map $M$ is contractive and $M_n$ is uniformly close to $M$, the perturbation bound from \Cref{lem:contraction-perturbation} yields
+\[
+\norm{\theta^{(t)}-\theta^\star}_2
+\le
+\kappa^t\norm{\theta^{(0)}-\theta^\star}_2
+\;+\;
+\frac{\varepsilon_n}{1-\kappa}.
+\]
+In missing-data problems, the missingness level $\rho$ typically affects \emph{both} terms:
+it worsens the contraction factor $\kappa$ (as in \Cref{fig:em-missingness-contraction}) and also increases the perturbation scale $\varepsilon_n$ because each sample contains less observed information.
+
+\begin{figure}[t]
+  \centering
+  \input{figures/handouts/em_algorithm/fig_em_missing_covariates_population_vs_sample_convergence}
+  \caption{Missing-covariates regression at a high missingness level ($\rho=0.95$, $d=2$): distance to $\theta^\star$ versus EM iteration. Population EM converges geometrically (but more slowly). Sample EM tracks the population dynamics until it reaches a sample-size-dependent floor.}
+  \label{fig:em-missing-covariates-pop-vs-sample}
+\end{figure}
+
+Missing-covariates regression sits at the other end of the spectrum.
+Increasing the missingness probability both weakens local contractivity and pushes the statistical problem itself toward non-identifiability.
+At high missingness the population map can develop spurious stable fixed points, so better initialization and more data are both essential before local refinement can be trusted.
+
+\clearpage
+% ------------------------------------------------------------
+\section{Diagnosing when EM is reliable}
+\label{sec:em-checklist}
+
+EM is a local method.
+Global geometry determines which fixed point is reached, local geometry determines the rate, and finite-sample variation determines the final error scale.
+To decide whether EM is reliable in a given model, first identify the population objective and its maximizers, including any symmetry or non-identifiability that survives at the population level.
+Then study the fixed points of the population EM map and the size of their basins of attraction.
+Near the maximizer you care about, the local question is whether $M$ is contractive and at what rate.
+At finite $n$, the relevant perturbation is the size of $\sup_{\theta\in\text{basin}}\norm{M_n(\theta)-M(\theta)}$ at the sample size you actually have.
+Because EM is a local method, a cheap initializer that lands in the right basin is part of the method rather than a separate preprocessing convenience.
+Carried back to the main notes, the central lesson is that EM is best understood neither as a mysterious latent-variable trick nor as plain likelihood maximization.
+It is a structured local method whose success depends on the geometry of the induced update map.
+
+\bibliographystyle{plainnat}
+\makeatletter
+\begingroup
+\let\input@path\@empty
+\IfFileExists{references.bib}{%
+  \gdef\stat221bibpath{references}%
+}{%
+  \IfFileExists{../references.bib}{%
+    \gdef\stat221bibpath{../references}%
+  }{%
+    \gdef\stat221bibpath{../../references}%
+  }%
+}
+\endgroup
+\makeatother
+\bibliography{\stat221bibpath}
+
+\end{document}

@@ -1,0 +1,326 @@
+\subsection{Monte Carlo methods}
+\label{subsec:monte-carlo-methods}
+
+Monte Carlo methods use random samples to approximate expectations.
+The basic object in these notes is an expectation under some law \(p\), because once we can draw i.i.d.\ samples from \(p\), estimation becomes averaging.
+Ordinary numerical integration is one example of this same idea: after choosing a sampling density, an integral can be rewritten as an expectation.
+The rest of the subsection asks two practical questions: how to generate useful draws, and how to spend a fixed simulation budget well.
+
+\subsubsection{Monte Carlo estimation}
+The starting point is the law-of-large-numbers estimator for an expectation under a tractable sampling law.
+A basic task is to evaluate an integral
+\[
+I = \int_{\mathcal{D}} g(x)\,dx,
+\]
+which can be rewritten as an expectation under any density $p$ on $\mathcal{D}$ that is positive wherever $g$ is nonzero:
+\[
+I = \E_{X \sim p}\!\left[\frac{g(X)}{p(X)}\right].
+\]
+In many applications we instead want
+\[
+\mu = \E_{X \sim p}\!\left[f(X)\right],
+\]
+where the target density is only known up to a normalizing constant, $p(x) = \tilde p(x)/Z$.
+Thus our two recurring goals are:
+(i) generate i.i.d. samples from $p$, and (ii) estimate $\mu$ from those samples.
+The second task is the one we ultimately care about, but the first task is often the main computational bottleneck.
+Much of Monte Carlo is about trading algorithmic effort for variance reduction so that $m$ samples are as informative as possible.
+
+If $X_1,\dots,X_m \sim p$ i.i.d. and $\E_p[f(X)^2] < \infty$, then the Monte Carlo estimator
+\[
+\hat\mu_m = \frac{1}{m} \sum_{i=1}^m f(X_i)
+\]
+converges almost surely to $\mu$, and $\sqrt{m}(\hat\mu_m - \mu)$ is asymptotically normal with variance $\operatorname{Var}_p(f(X))$ (LLN/CLT).
+This implies a standard error that scales like $1/\sqrt{m}$, so doubling accuracy typically requires roughly four times as many samples unless we use variance reduction.
+Throughout this unit we assume we can numerically generate i.i.d. samples from $\mathrm{Unif}(0,1)$ and $\mathcal{N}(0,1)$.
+
+\subsubsection{Basic sampling constructions}
+\label{subsec:mc-generating}
+Many Monte Carlo procedures start from the ability to sample from a target distribution.
+We record two classical one-dimensional constructions that we will reuse as building blocks later.
+Both methods illustrate a common theme: we trade analytic structure (closed-form CDFs or a tractable envelope) for efficient sampling.
+
+\label{subsubsec:inverse-cdf}
+The first construction pushes uniform randomness through a cumulative distribution function.
+\begin{proposition}[Inverse CDF method]
+Suppose $U \sim \mathrm{Unif}(0,1)$ and $F$ is a one-dimensional cumulative distribution function.
+Define
+\[
+X = F^{-1}(U) \coloneqq \inf\{x : F(x) \ge U\}.
+\]
+Then $X$ has cdf $F$.
+\end{proposition}
+\begin{proof}
+For any $x$, $\{X \le x\} = \{U \le F(x)\}$, so $\mathbb{P}(X \le x) = F(x)$.
+\end{proof}
+The inverse CDF method is exact and simple, but it requires either a closed form for $F^{-1}$ or a fast numerical inverse.
+In higher dimensions we often rely on conditional CDFs, transformations, or acceptance-rejection instead.
+See \citet[\S2.1]{liu_2002_monte_carlo} for additional discussion.
+
+\begin{example}[Exponential distribution]
+For $\mathrm{Exp}(\lambda)$, the cdf is
+$F(x) = \bigl(1-e^{-\lambda x}\bigr)\,\1\{x \ge 0\}$, so
+$F^{-1}(u) = -\lambda^{-1}\log(1-u)$.
+If $u_i \sim \mathrm{Unif}(0,1)$, then
+$x^{(i)} = -\lambda^{-1}\log(1-u_i)$ are i.i.d. $\mathrm{Exp}(\lambda)$.
+\end{example}
+
+\label{subsubsec:rejection-sampling}
+The second construction samples from an easier envelope and keeps only the proposals that fall under the target.
+Suppose the target density is $p(x) = \tilde p(x)/Z$ where $\tilde p$ is an unnormalized density and $Z = \int \tilde p(x)\,dx$.
+Assume we can sample from a proposal density $g$ and that there is a constant $M>0$ with
+$\tilde p(x) \le M g(x)$ for all $x$.
+\Cref{alg:rejection-sampling} draws a proposal and accepts it with probability
+$\tilde p(x)/(M g(x))$; the accepted sample has density $p$.
+Indeed, the joint density of \emph{accepted} draws is proportional to $\tilde p$, and the acceptance probability is $Z/M\,.$
+Equivalently, the expected number of proposals per accepted sample is $M/Z$, so choosing $g$ (and thus $M$) controls efficiency.
+See \citet[\S2.2]{liu_2002_monte_carlo} for details.
+
+\begin{algorithm}[t]
+  \caption{Rejection sampling}
+  \label{alg:rejection-sampling}
+  \begin{algorithmic}[1]
+    \Require Unnormalized target $\tilde p(x)$, proposal density $g(x)$, constant $M$ with $\tilde p(x) \le M g(x)$
+    \Repeat
+      \State Draw $Y \sim g$ and $U \sim \mathrm{Unif}(0,1)$.
+    \Until{$U \le \tilde p(Y)/(M g(Y))$}
+    \State \Return $Y$
+  \end{algorithmic}
+\end{algorithm}
+
+\begin{example}[Truncated Gamma tail]
+We want $X \sim \Gamma(4,1)$ conditioned on $X>10$.
+An unnormalized density is
+\[
+\tilde p(x) = x^3 e^{-x} \1\{x>10\}.
+\]
+Take a shifted exponential proposal $Y = 10 + E$ with $E \sim \mathrm{Exp}(\lambda)$, i.e.
+\[
+ g(y) = \lambda e^{-\lambda(y-10)}\1\{y>10\}.
+\]
+Then
+\[
+\frac{\tilde p(x)}{g(x)} = \frac{x^3}{\lambda}\exp\bigl(-(1-\lambda)x - 10\lambda\bigr).
+\]
+Choosing $\lambda=\tfrac12$ gives
+$\tilde p(x)/g(x) = 2 x^3 e^{-x/2-5}$, which is decreasing for $x\ge 10$;
+thus we can take
+$M = 2\cdot 10^3 e^{-10} = 2000 e^{-10}$.
+The acceptance ratio for a proposed $x$ is
+\[
+\frac{\tilde p(x)}{M g(x)} = 10^{-3} x^3 e^{-x/2+5} \le 1,
+\]
+with equality at $x=10$.
+\end{example}
+
+Rejection sampling works best when the proposal closely tracks the target and $M$ is small.
+In high dimensions it can become impractical because acceptance rates decay quickly, especially if $g$ underestimates the tails of $p$.
+
+\begin{example}[A multidimensional rejection construction]
+Suppose the target is the uniform distribution on the unit disk
+\[
+  \mathcal{D}\coloneqq \{x\in\R^2:\norm{x}_2\le 1\}.
+\]
+Draw \(Y\sim\mathrm{Unif}([-1,1]^2)\) and accept when \(Y\in\mathcal{D}\).
+Conditioned on acceptance, the draw is uniform on \(\mathcal{D}\), and the acceptance probability is
+\[
+  \frac{\operatorname{area}(\mathcal{D})}{\operatorname{area}([-1,1]^2)}
+  =
+  \frac{\pi}{4}.
+\]
+This simple example is the multivariate version of the one-dimensional picture: rejection sampling is still exact, but its efficiency is the ratio between the target-set volume and the envelope volume.
+For balls inside boxes that ratio deteriorates quickly with dimension, which is one concrete reason the method becomes fragile in high-dimensional problems.
+\end{example}
+
+\subsubsection{Importance sampling}
+\label{subsubsec:importance-sampling}
+Importance sampling estimates expectations under $p$ using samples from a more convenient proposal $g$.
+Assume $\mathrm{supp}(p) \subseteq \mathrm{supp}(g)$ and define the importance weight
+$w(x) = p(x)/g(x)$.
+Then
+\[
+\mu = \E_{X \sim p}[h(X)] = \E_{X \sim g}\!\left[w(X) h(X)\right].
+\]
+Intuitively, $w(x)$ corrects for the fact that we are sampling from $g$ instead of $p$.
+A simple estimator is
+\[
+\tilde\mu = \frac{1}{m}\sum_{i=1}^m w(X_i) h(X_i),
+\qquad X_i \sim g.
+\]
+When $p(x)=\tilde p(x)/Z$ and $Z$ is unknown, we use the self-normalized estimator
+\[
+\hat\mu = \frac{\sum_{i=1}^m \tilde w_i h(X_i)}{\sum_{i=1}^m \tilde w_i},
+\qquad \tilde w_i = \frac{\tilde p(X_i)}{g(X_i)}.
+\]
+The estimator $\hat\mu$ is generally biased for finite $m$, but it is consistent under standard moment conditions and is the natural choice when $Z$ is unknown.
+Its finite-sample accuracy is still governed by weight variability: highly uneven weights make both the bias and the variance worse.
+See \citet[\S2.5]{liu_2002_monte_carlo}.
+
+\begin{algorithm}[t]
+  \caption{Self-normalized importance sampling}
+  \label{alg:importance-sampling}
+  \begin{algorithmic}[1]
+    \Require Unnormalized target $\tilde p(x)$, proposal density $g(x)$, test function $h(x)$
+    \State Draw $X_1,\dots,X_m \sim g$ i.i.d.
+    \State Compute weights $\tilde w_i = \tilde p(X_i)/g(X_i)$ and normalize
+    $w_i = \tilde w_i / \sum_{j=1}^m \tilde w_j$.
+    \State \Return $\hat\mu = \sum_{i=1}^m w_i h(X_i)$.
+\end{algorithmic}
+\end{algorithm}
+
+A particularly useful case is when we already know how to sample from a base law \(\pi\), and then new side information \(y\) arrives.
+If that information enters through a nonnegative likelihood factor \(L_y(x)\), the new target is the reweighted law
+\[
+  \pi^y(dx)
+  \coloneqq
+  \frac{L_y(x)\,\pi(dx)}{Z_y},
+  \qquad
+  Z_y\coloneqq \int L_y(x)\,\pi(dx).
+\]
+This is already interesting on its own:
+it answers a concrete Monte Carlo question.
+If we already have samples from \(\pi\) and then data arrive that change the target, can we recycle those samples rather than start the whole computation from scratch?
+
+\begin{example}[Reweighting existing samples after data arrive]
+\label{ex:conditioning-likelihood-reweighting}
+Assume \(0<Z_y<\infty\), and let \(h\) be \(\pi^y\)-integrable.
+Then
+\begin{equation}
+  \int h(x)\,\pi^y(dx)
+  =
+  \frac{\int h(x)L_y(x)\,\pi(dx)}{\int L_y(x)\,\pi(dx)}.
+  \label{eq:conditioning-likelihood-reweighting}
+\end{equation}
+So if \(X_1,\dots,X_m\sim\pi\) are i.i.d., then
+\[
+  \int h(x)\,\pi^y(dx)
+  \approx
+  \frac{\sum_{i=1}^m L_y(X_i)\,h(X_i)}{\sum_{i=1}^m L_y(X_i)}.
+\]
+In other words, conditioning is a special case of self-normalized importance sampling with proposal \(\pi\), target \(\pi^y\), and unnormalized weights
+\[
+  \tilde w_i=L_y(X_i).
+\]
+The unknown constant \(Z_y\) cancels after normalization.
+If \(\pi\) is a prior law and \(L_y(x)=p(y\mid x)\), then \(\pi^y\) is exactly the posterior law given \(y\), and posterior expectations can be estimated by reweighting prior samples.
+\end{example}
+
+This conditioning-by-reweighting viewpoint will reappear whenever side information changes an existing sampling problem.
+
+Importance sampling is only as useful as the weight computations behind it.
+Because those weights are ratios of potentially tiny densities, the next block collects the log-scale and transformed-density bookkeeping that will recur here, in Metropolis--Hastings acceptance ratios, in tempering, in SMC, and later in diffusion objectives.
+\input{chapters/05_stable_computation_geometry/stable_evaluation}
+With that numerical bookkeeping in place, we can ask whether the proposal is statistically well matched to the target.
+
+\subsubsection{Proposal quality and effective sample size}
+\label{subsubsec:proposal-quality-and-ess}
+When $X_i \sim p$ i.i.d., a CLT yields approximate confidence intervals
+$\bar h \pm 1.96\, s_h/\sqrt{m}$ for $\mu$, where
+$\bar h = m^{-1}\sum_{i=1}^m h(X_i)$ and
+$s_h^2 = (m-1)^{-1}\sum_{i=1}^m (h(X_i)-\bar h)^2$.
+For importance sampling, proposal quality is often summarized by how concentrated the normalized weights are.
+If all normalized weights are close to $1/m$, then every draw contributes comparably to the estimate.
+If one or two normalized weights dominate, then only a few draws are doing most of the work.
+This motivates the weight-based effective sample size proxy
+\[
+  \mathrm{ESS} \approx \frac{1}{\sum_{i=1}^m w_i^2},
+\]
+where $w_i$ now denotes the normalized importance weight.
+When $p$ and $g$ are normalized so that $\E_g[w(X)]=1$, a large-sample heuristic gives
+\[
+  m\sum_{i=1}^m w_i^2 \approx \E_g[w(X)^2] = 1+\operatorname{Var}_g(w(X)),
+\]
+and therefore
+\[
+  \mathrm{ESS}(m) \approx \frac{m}{1+\operatorname{Var}_g(w(X))}.
+\]
+This is the weight-based notion of ESS: it measures how uneven the normalized importance weights are, not the autocorrelation ESS for correlated MCMC chains that appears later in \Cref{subsubsec:ess}.
+(See \citet[\S2.5.3]{liu_2002_monte_carlo}.)
+If $p$ and $g$ are normalized densities, then $\operatorname{Var}_g(w(X))=\chi^2(p\|g)$, where $\chi^2(p\|g)=\int (p(x)-g(x))^2/g(x)\,dx$ is the chi-squared divergence.
+Thus we want $w(X)$ to be as close to constant as possible, i.e., $g(x)$ should closely match $p(x)$ in both modes and tails.
+\Cref{fig:is-proposal-quality} illustrates typical outcomes.
+
+\begin{figure}[t]
+  \centering
+  \input{figures/main_notes/sampling/fig_is_proposal_quality}
+\caption{Proposal quality in importance sampling.
+  The target $p(x)$ is shown in black and the proposal $g(x)$ in red.
+  Good proposals match both modes and tails, whereas poorly aligned proposals place too much mass in regions where $p(x)$ is small.
+  Overly diffuse proposals are workable but less efficient.}
+  \label{fig:is-proposal-quality}
+\end{figure}
+
+A useful heuristic is to choose $g$ to approximate $|h(x)|p(x)$, which controls the variance of $w(X)h(X)$.
+In practice this often means matching the dominant modes and tail decay.
+If $g$ is lighter-tailed than $p$, then a few extreme samples can dominate the estimator, leading to weight degeneracy.
+When $p(x) \propto e^{-q(x)}$ with smooth $q$, a Laplace approximation suggests
+\[
+\nabla q(\mu) = 0, \qquad \Sigma = \bigl[\Hess q(\mu)\bigr]^{-1},
+\]
+and $g = \mathcal{N}(\mu,\Sigma)$.
+For multimodal targets, a mixture proposal can capture multiple modes; for heavy tails, a $t_\nu$ proposal is often safer.
+
+A common workflow is:
+\begin{enumerate}[leftmargin=*,label=(\arabic*)]
+  \item Start with a pilot proposal $g$ and a moderate sample size $m$.
+  Compute a rough ESS estimate (e.g., via the sample weights) and inspect a histogram of log-weights.
+  \item If weights are highly skewed, increase the variance of $g$ and/or add mixture components where large weights occur, then repeat step (1).
+  \item Once the weights stabilize, run a larger batch for the final estimate.
+\end{enumerate}
+The histogram is often more informative than raw weights, since it makes tail behavior and outliers visible.
+
+\subsubsection{Variance reduction}
+Monte Carlo error decreases as $m$ grows, but we can often reduce variance further by exploiting structure.
+The idea is to transform an unbiased estimator into another unbiased estimator with smaller variance by subtracting (or conditioning on) a related quantity whose expectation is known.
+We summarize one widely used technique here; see \citet[\S2.3]{liu_2002_monte_carlo} for additional methods.
+Suppose we want $\mu = \E[f(X)]$ and we have another random variable $Y$ with known expectation $\E[Y]$.
+For any $b \in \R$, the control-variate estimator
+\[
+Z = f(X) + b\bigl(Y - \E[Y]\bigr)
+\]
+has the same mean as $f(X)$.
+Its variance is
+\[
+\operatorname{Var}(Z) = \operatorname{Var}(f(X)) + b^2 \operatorname{Var}(Y) + 2b\,\operatorname{Cov}(f(X),Y).
+\]
+The minimizer is
+\[
+ b^* = -\frac{\operatorname{Cov}(f(X),Y)}{\operatorname{Var}(Y)} = -\rho_{f(X),Y}\frac{\mathrm{sd}(f(X))}{\mathrm{sd}(Y)},
+\]
+which yields
+\[
+\operatorname{Var}(Z) = \bigl(1-\rho_{f(X),Y}^2\bigr)\operatorname{Var}(f(X)) \le \operatorname{Var}(f(X)).
+\]
+Thus strong (negative) correlation between $f(X)$ and $Y$ produces the largest variance reduction.
+This guarantee is for the population-optimal coefficient \(b^*\).
+In practice one often replaces \(b^*\) by an empirical estimate \(\hat b\) computed from the same Monte Carlo sample.
+That plug-in estimator is often still useful, but finite-sample variance reduction is no longer automatic: if the correlation is weak, estimating \(\hat b\) can slightly increase variance rather than decrease it.
+
+\begin{example}[Rare-event estimation with IS + control variates]
+Consider
+$\theta = \E\bigl[e^X \1\{X>3\}\bigr]$ with $X \sim \mathcal{N}(0,1)$.
+Naive Monte Carlo is inefficient because $\mathbb{P}(X>3)$ is tiny.
+An importance-sampling alternative draws $Y \sim \mathcal{N}(\mu,1)$ for some $\mu>3$, with weight
+\[
+ w(y) = \frac{\phi(y)}{\phi(y-\mu)} = \exp\bigl(-\mu y + \tfrac12 \mu^2\bigr),
+\]
+and estimator
+\[
+\tilde\theta_{\mathrm{IS}} = \frac{1}{m}\sum_{i=1}^m e^{Y_i}\,\1\{Y_i>3\}\,w(Y_i),
+\qquad Y_i \sim \mathcal{N}(\mu,1).
+\]
+Here $\phi$ denotes the standard normal density.
+To further reduce variance, treat $Y$ as a control variate with $\E[Y]=\mu$.
+Let
+$H(y) = e^{y}\,\1\{y>3\}\,w(y)$ and define
+\[
+\hat\theta_{\mathrm{IS+CV}} = \frac{1}{m}\sum_{i=1}^m \Bigl(H(Y_i) + b\,(Y_i-\mu)\Bigr).
+\]
+A practical estimate of $b$ is
+\[
+\hat b = -\frac{\sum_{i=1}^m (H(Y_i)-\bar H)(Y_i-\bar Y)}{\sum_{i=1}^m (Y_i-\bar Y)^2},
+\qquad \bar H = \frac{1}{m}\sum_{i=1}^m H(Y_i),\; \bar Y = \frac{1}{m}\sum_{i=1}^m Y_i.
+\]
+In this example, choosing $\mu \approx 4$ yields a noticeable variance reduction in practice.
+Empirical estimation of $b$ can slightly increase variance, and the benefit is strongest when $H(Y)$ and $Y$ are strongly (typically negatively) correlated.
+\end{example}

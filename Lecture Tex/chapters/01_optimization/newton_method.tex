@@ -1,0 +1,106 @@
+\subsection{Second-order methods and structured linear algebra}
+\label{subsec:second-order-methods}
+
+Preconditioning rescales first-order information with a chosen metric.
+Newton-type methods instead extract the metric from the Hessian itself, so each step is defined by a local quadratic model and implemented through a linear solve.
+This is the point where curvature, factorization, and iterative linear algebra become inseparable.
+
+\subsubsection{Newton's method}
+\label{subsec:newton}
+
+When $f$ is twice differentiable, the second-order Taylor approximation around $x$ is
+\begin{equation}
+  f(y) \approx f(x) + \nabla f(x)^\top (y-x) + \frac{1}{2}(y-x)^\top \Hess f(x) (y-x).
+  \label{eq:taylor-2}
+\end{equation}
+If $\Hess f(x)\succ 0$, this quadratic model is strictly convex in $y$, so its unique minimizer gives the \emph{Newton step}
+\begin{equation}
+  \Delta x_{\mathrm{nt}} = -\Hess f(x)^{-1} \nabla f(x),
+  \label{eq:newton-step}
+\end{equation}
+and Newton's method updates $x \leftarrow x + \Delta x_{\mathrm{nt}}$.
+If $\Hess f(x)$ is singular or indefinite, the quadratic model need not have a minimizer, so the basic Newton step is not defined without modification.
+If $f$ is exactly quadratic with positive definite Hessian, Newton reaches the minimizer in one step.
+For the ridge logistic objective $s(\theta)$ from \cref{ex:logistic-reg}, the Newton direction is especially transparent: it solves
+\[
+  \bigl(X^\top W(\theta)X + mI\bigr)\Delta\theta = -\nabla s(\theta).
+\]
+This is the same Hessian structure that appeared earlier, now used directly to reshape the local geometry before taking a step.
+
+\begin{figure}[t]
+  \centering
+  \input{figures/main_notes/optimization/fig_newton_quadratic_model}
+  \caption{Newton's method: minimize the local quadratic (second-order Taylor) model of $f$ around $x_k$.
+  The minimizer of the quadratic model gives the Newton step $x_{k+1}=x_k-\Hess f(x_k)^{-1}\nabla f(x_k)$.}
+  \label{fig:newton-quadratic-model}
+\end{figure}
+
+\begin{lemma}[Newton direction is a descent direction]
+If $\Hess f(x) \succ 0$ and $\nabla f(x)\neq 0$, then the Newton direction $\Delta x_{\mathrm{nt}}=-\Hess f(x)^{-1}\nabla f(x)$ satisfies $\nabla f(x)^\top \Delta x_{\mathrm{nt}} < 0$.
+\end{lemma}
+\begin{proof}
+Let $g=\nabla f(x)$ and $H=\Hess f(x)\succ 0$.
+Then
+\[
+\nabla f(x)^\top \Delta x_{\mathrm{nt}}
+= -g^\top H^{-1} g.
+\]
+Since $H^{-1}\succ 0$, we have $g^\top H^{-1}g>0$ whenever $g\neq 0$, so the expression is strictly negative.
+\end{proof}
+
+\begin{definition}[Newton decrement]
+When $\Hess f(x)\succ 0$, the Newton decrement is
+\begin{equation}
+  \lambda(x)^2 = \nabla f(x)^\top \Hess f(x)^{-1}\nabla f(x).
+  \label{eq:newton-decrement}
+\end{equation}
+Equivalently, $\lambda(x)^2 = -\nabla f(x)^\top \Delta x_{\mathrm{nt}}$.
+A common stopping criterion is $\lambda(x)^2/2 \le \varepsilon$.
+\end{definition}
+
+The basic algorithm is therefore stated for the regime where the Hessian stays positive definite along the iterates.
+
+\begin{algorithm}
+  \caption{Newton's method with backtracking line search}
+  \label{alg:newton-backtracking}
+  \begin{algorithmic}[1]
+    \Require Twice differentiable $f$, initial point $x^{(0)}$ such that $\Hess f(x^{(k)})\succ 0$ for every iterate, tolerance $\varepsilon>0$, parameters $\alpha \in (0,1/2)$, $\beta \in (0,1)$
+    \Ensure Approximate minimizer $x$
+    \State $k \gets 0$
+    \While{$\text{true}$}
+      \State $g^{(k)} \gets \nabla f(x^{(k)})$
+      \State $H^{(k)} \gets \Hess f(x^{(k)})$
+      \State Solve $H^{(k)}\Delta x^{(k)} = -g^{(k)}$ for $\Delta x^{(k)}$ \Comment{Newton direction}
+      \State $\lambda_k^2 \gets -{g^{(k)}}^\top \Delta x^{(k)}$ \Comment{Newton decrement squared}
+      \If{$\lambda_k^2/2 \le \varepsilon$}
+        \State \textbf{break}
+      \EndIf
+      \State $t^{(k)} \gets$ \Call{BacktrackingLineSearch}{$f, x^{(k)}, \Delta x^{(k)}, \alpha, \beta$} \Comment{\cref{alg:backtracking}}
+      \State $x^{(k+1)} \gets x^{(k)} + t^{(k)}\Delta x^{(k)}$
+      \State $k \gets k + 1$
+    \EndWhile
+    \State \Return $x^{(k)}$
+  \end{algorithmic}
+\end{algorithm}
+
+The Newton decrement $\lambda(x)$ measures how much quadratic curvature would help you improve the objective at $x$.
+When $\lambda(x)$ is small, the Newton step is small and the quadratic approximation is typically accurate, so Newton's method often takes full steps ($t=1$) and converges very quickly.
+When $\lambda(x)$ is large, damping/backtracking is needed to stay in the region where the local quadratic model is trustworthy (see \citet[\S9.5.3]{boyd_vandenberghe_2004_convex}).
+
+\citet[\S9.5.3]{boyd_vandenberghe_2004_convex} analyzes Newton's method in two phases:
+far from the optimum, backtracking may be needed and the decrease is more modest; once close enough that the quadratic model is accurate, the method typically accepts $t=1$ and exhibits quadratic convergence.
+Per-iteration cost can be high (solving linear systems in dimension $d$), and numerical issues can arise in high dimension or with ill-conditioned Hessians.
+
+One also sometimes uses a \emph{regularized} (or damped) Newton step, solving $(\Hess f(x)+\lambda I)\Delta x = -\nabla f(x)$ with $\lambda>0$, to improve numerical stability or to ensure the system is well-conditioned.
+This is already a geometric decision, not merely a linear-algebra safeguard: adding $\lambda I$ floors the local curvature and prevents the update from overreacting to directions that are poorly resolved.
+When exact Hessians are unavailable or too expensive to form, the next compromise is to approximate the same local geometry rather than abandon it.
+
+\subsubsection{Quasi-Newton updates}
+\label{subsubsec:quasi-newton}
+
+Quasi-Newton methods keep the local-model viewpoint but replace the exact inverse Hessian by a positive-definite approximation updated from gradients and steps.
+Methods such as BFGS and L-BFGS are designed to preserve the secant information revealed by successive iterates while avoiding the cost of forming or factoring a full Hessian at every step; see \citet[\S6.1--\S6.2]{nocedal_wright_2006_numerical}.
+In practice this often gives a useful middle ground between first-order robustness and full Newton steps: the method still follows a curvature-adapted direction, but the per-iteration linear algebra is much cheaper.
+
+Whether the curvature comes from a true Hessian, a quasi-Newton update, or a covariance surrogate, the implementation still depends on stable positive-definite representations and efficient linear solves.
+The next destinations make that computational geometry explicit: first the reusable SPD toolkit, then the complementary large-scale solver viewpoint provided by conjugate gradient.

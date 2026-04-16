@@ -1,0 +1,45 @@
+\begin{tikzpicture}[x=1.15cm,y=1.15cm,>=Stealth]
+  % Geometry of a projected gradient step on a generic convex set.
+  \pgfmathsetmacro{\a}{3.0}
+  \pgfmathsetmacro{\b}{2.0}
+
+  % Choose a projection point on a smooth boundary (here: the right-most point of an ellipse),
+  % so the projection direction is clearly orthogonal to the tangent.
+  \coordinate (xnext) at (\a,0);
+  \coordinate (y) at ($ (xnext) + (1.8,0) $);
+  \coordinate (xk) at (1.2,-0.85);
+
+  % Tangent segment at x_{k+1} (vertical at the right-most point of an ellipse).
+  \coordinate (t1) at ($ (xnext) + (0,1.25) $);
+  \coordinate (t2) at ($ (xnext) + (0,-1.25) $);
+
+  % A small right-angle marker between the tangent and the projection direction.
+  \pgfmathsetmacro{\s}{0.28}
+  \coordinate (ra) at ($ (xnext) + (0,\s) $);
+  \coordinate (rb) at ($ (xnext) + (-\s,0) $);
+  \coordinate (rc) at ($ (xnext) + (-\s,\s) $);
+
+  % Feasible set C.
+  \draw[fill=stat221GrayLight,draw=stat221Gray!65,line width=0.6pt] (0,0) ellipse ({\a} and {\b});
+  \node[stat221Gray!70] at (-1.7,1.25) {$C$};
+
+  % Tangent line at the projection point.
+  \draw[densely dashed,stat221Gray!70,line width=0.55pt] (t2) -- (t1);
+
+  % Step and projection arrows.
+  \draw[stat221Blue,thick,densely dashed,->] (xk) -- (y);
+  \draw[stat221Purple,thick,->] (y) -- (xnext);
+
+  % Points.
+  \fill[black] (xk) circle (1.45pt);
+  \fill[stat221Red] (y) circle (1.45pt);
+  \fill[stat221Purple] (xnext) circle (1.55pt);
+
+  % Labels (use a light background to avoid collisions with lines).
+  \node[anchor=north east,font=\small,fill=white,fill opacity=0.85,text opacity=1,inner sep=1pt] at (xk) {$x_k$};
+  \node[anchor=south west,font=\small,stat221Red,fill=white,fill opacity=0.85,text opacity=1,inner sep=1pt] at (y) {$y$};
+  \node[anchor=north east,font=\small,stat221Purple,fill=white,fill opacity=0.85,text opacity=1,inner sep=1pt] at ($ (xnext) + (0.02,-0.02) $) {$x_{k+1}$};
+
+  % Right-angle marker near the projection point.
+  \draw[stat221Gray!75,line width=0.55pt] (ra) -- (rc) -- (rb);
+\end{tikzpicture}

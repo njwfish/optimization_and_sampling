@@ -1,0 +1,239 @@
+\subsection{Momentum-based methods}
+\label{subsec:momentum-based-methods}
+
+Gradient descent reacts only to the current gradient.
+It updates
+\[
+  x_{k+1} = x_k - \alpha_k \nabla f(x_k),
+\]
+so the next iterate depends only on the current point.
+On an ill-conditioned objective that can produce the familiar zig-zag pattern: the method keeps correcting the last step instead of building sustained motion along the useful direction.
+Momentum methods change this by carrying an auxiliary state from one iteration to the next.
+That state is a velocity for heavy-ball and NAG, a cumulative dual statistic for dual averaging, and diagonal moment accumulators for the AdaGrad/RMSProp/Adam family.
+The unifying idea is simple: a local gradient should not merely determine the next correction; it should update a short-term memory that makes the future trajectory more coherent.
+
+This is the first optimization chapter where augmentation is the main design move rather than a secondary implementation detail.
+It also marks a clean split between method families.
+Heavy-ball and NAG belong to the smooth deterministic story, dual averaging organizes the constrained and prox-geometry viewpoint from the previous chapter, and Adam is a mini-batch method with deliberately heuristic defaults.
+The shared state-space viewpoint matters throughout, but the tuning rules and guarantees are not interchangeable.
+
+\subsubsection{Ill-conditioning and zig-zagging}
+\label{subsubsec:momentum-motivation}
+
+On an ill-conditioned objective, the curvature can be very different in different directions.
+The simplest picture is a quadratic with elongated level sets, e.g.\ $f(x_1,x_2)=x_1^2/9 + x_2^2$.
+Gradient descent with a conservative step size is stable but may make painfully slow progress along the shallow direction.
+Taking a larger step size can speed up progress, but typically introduces oscillations in the steep direction: successive gradients point in alternating directions, and the iterates repeatedly ``undo'' part of the previous step.
+\Cref{fig:momentum-ill-conditioned} illustrates this behavior.
+
+\begin{figure}[t]
+  \centering
+  \input{figures/main_notes/augmented_state_optimization/fig_momentum_trajectories}
+  \caption{Ill-conditioned geometry on $f(x_1,x_2)=x_1^2/9+x_2^2$.
+  In the steep direction, large steps can induce oscillations; a momentum term damps these oscillations by combining information across iterations.}
+  \label{fig:momentum-ill-conditioned}
+\end{figure}
+
+The basic heuristic is that averaging reinforces directions that persist over several iterations and cancels directions that alternate rapidly.
+This is why momentum helps on elongated valleys: it preserves progress along the shallow direction while damping the back-and-forth motion in the steep one.
+
+\subsubsection{Heavy-ball momentum}
+\label{subsubsec:heavy-ball}
+
+A common momentum scheme is Polyak's \emph{heavy-ball} method,
+\begin{equation}
+  x_{k+1} = x_k - \alpha_k \nabla f(x_k) + \beta_k (x_k-x_{k-1}),
+  \label{eq:heavy-ball-two-point}
+\end{equation}
+where $\alpha_k>0$ is a step size and $\beta_k\in[0,1)$ controls how much of the previous step is carried forward.
+Defining the velocity $v_k \coloneqq x_k-x_{k-1}$ turns \eqref{eq:heavy-ball-two-point} into the augmented-state recursion
+\begin{equation}
+  v_{k+1} = \beta_k v_k - \alpha_k \nabla f(x_k),
+  \qquad
+  x_{k+1} = x_k + v_{k+1}.
+  \label{eq:heavy-ball-velocity}
+\end{equation}
+In this form, the algorithm is ``first-order'' in the state $(x_k,v_k)$: the next state depends only on the current state and the current gradient.
+
+\subsubsection{Acceleration by look-ahead gradients}
+\label{subsubsec:nag}
+
+Nesterov's accelerated gradient (NAG) modifies \cref{eq:heavy-ball-two-point} by taking a \emph{look-ahead} point and evaluating the gradient there.
+Given step sizes $(\alpha_k)$ and momentum parameters $(\beta_k)$, define
+\begin{equation}
+  y_k = x_k + \beta_k(x_k-x_{k-1}),
+  \qquad
+  x_{k+1} = y_k - \alpha_k \nabla f(y_k).
+  \label{eq:nag-two-point}
+\end{equation}
+The first line extrapolates in the direction of the current velocity $x_k-x_{k-1}$, and the second line uses a gradient step to ``steer'' from the look-ahead point.
+
+\begin{algorithm}
+  \caption{Nesterov accelerated gradient (NAG)}
+  \label{alg:nag}
+  \begin{algorithmic}[1]
+    \Require Differentiable $f$, step sizes $(\alpha_k)_{k\ge 0}$, momentum parameters $(\beta_k)_{k\ge 0}$, initial point $x_0$, number of steps $T$
+    \Ensure Iterate $x_T$
+    \State $x_{-1} \gets x_0$
+    \For{$k=0,1,\dots,T-1$}
+      \State $y_k \gets x_k + \beta_k(x_k-x_{k-1})$ \Comment{look-ahead point}
+      \State $x_{k+1} \gets y_k - \alpha_k \nabla f(y_k)$
+    \EndFor
+    \State \Return $x_T$
+  \end{algorithmic}
+\end{algorithm}
+
+It is sometimes helpful to write NAG in velocity form.
+Let $v_k \coloneqq x_k-x_{k-1}$.
+Then $y_k = x_k + \beta_k v_k$, and the update becomes
+\begin{equation}
+  v_{k+1} = \beta_k v_k - \alpha_k \nabla f(x_k+\beta_k v_k),
+  \qquad
+  x_{k+1} = x_k + v_{k+1}.
+  \label{eq:nag-velocity}
+\end{equation}
+The parameter $\beta_k$ controls how much previous velocity is retained, while $\alpha_k$ controls how strongly the new gradient information overrides this extrapolation.
+The difference from heavy-ball is conceptual as well as algebraic:
+heavy-ball uses the stored velocity to smooth the step itself, whereas NAG uses it to decide \emph{where} the next gradient should be evaluated.
+That distinction is why acceleration arguments for NAG are tied to smooth convex structure rather than to the generic oscillation-damping heuristic from the previous subsection.
+
+In the regimes where acceleration theory applies, the improvement over plain gradient descent is explicit rather than merely heuristic.
+For an $L$-smooth convex objective, gradient descent gives a suboptimality bound of order $O(1/k)$, whereas NAG improves this to $O(1/k^2)$.
+If $f$ is moreover $m$-strongly convex with condition number $\kappa=L/m$, then gradient descent requires $O(\kappa\log(1/\varepsilon))$ iterations to reach accuracy $\varepsilon$, while accelerated schemes reduce this to $O(\sqrt{\kappa}\log(1/\varepsilon))$.
+We record these rates only as the classical benchmark that motivates the method; the notes use them for orientation rather than as a theorem proved from our local source base.
+This is the main meaning of the word \emph{acceleration}: NAG changes the dependence on the condition number, not just the constant in front of the rate.
+
+\subsubsection{Averaging with dual states}
+\label{subsubsec:dual-averaging}
+
+Nesterov also introduced \emph{dual averaging}, which carries a different auxiliary state.
+Here the stored quantity is the cumulative gradient summary $s_k$; instead of extrapolating the current iterate, the algorithm updates this summary and maps it back to the decision variable through a regularized minimization step.
+Let $C\subseteq\R^d$ be a closed convex set, let $\psi:C\to\R$ be a strongly convex prox function, and let $g_k$ be a gradient or subgradient observed at iteration $k$.
+Define the cumulative gradient summary
+\[
+  s_k \coloneqq \sum_{i=1}^k g_i,
+\]
+and then choose the next iterate by
+\begin{equation}
+  x_{k+1}
+  = \argmin_{x\in C}
+    \left\{
+      \ip{s_k}{x} + \frac{1}{\eta_k}\psi(x)
+    \right\},
+  \label{eq:dual-averaging}
+\end{equation}
+where $\eta_k>0$ is a scale parameter.
+
+The vector $s_k$ is the auxiliary dual accumulator because it acts on the primal variable $x$ through the linear form $\ip{s_k}{x}$.
+Using the Euclidean identification introduced at the start of the optimization chapter, we often write dual vectors as ordinary vectors, so the distinction is conceptual rather than notational, but the roles are different:
+the dual variable stores aggregated first-order information, while the primal variable is the point at which the objective is evaluated.
+The prox term $\psi$ keeps the minimization in \eqref{eq:dual-averaging} well behaved and converts the accumulated dual information into a new primal iterate.
+
+In the simplest Euclidean case, where $C=\R^d$ and $\psi(x)=\frac12\norm{x}_2^2$, the optimality condition for \eqref{eq:dual-averaging} gives
+\[
+  x_{k+1} = -\eta_k s_k = -\eta_k \sum_{i=1}^k g_i.
+\]
+Up to the scale factor $\eta_k$, the iterate therefore depends on an average or cumulative sum of past gradients rather than on a look-ahead gradient at an extrapolated point.
+This is still an augmented-state method, but the state no longer represents literal velocity.
+Instead it stores a running first-order summary that is interpreted through the prox geometry.
+That viewpoint will reappear in \Cref{subsubsec:nuts-warmup}, where dual averaging is used to tune a sampler rather than to update model parameters.
+
+\subsubsection{Adaptive moment methods}
+\label{subsubsec:adam}
+
+In large-scale problems, $f$ often has a finite-sum form (as in \cref{eq:finite-sum}), and gradients are estimated using mini-batches.
+Adam keeps the augmentation idea but changes the carried quantities.
+It maintains two auxiliary states: a first-moment estimate $m_k$ and a second-moment estimate $v_k$.
+The first carries directional information forward, while the second rescales coordinates according to recent gradient magnitudes.
+It is best viewed together with AdaGrad and RMSProp as part of a small family of diagonal adaptive-scaling methods:
+AdaGrad keeps a cumulative sum of squared gradients, RMSProp replaces that cumulative memory by an exponential moving average, and Adam adds a first-moment exponential average on top of the RMSProp-style denominator.
+This combination is one reason Adam-type methods became standard in deep-network training, where coordinates can have very different scales and mini-batch gradients are both noisy and nonstationary \citep[\S1]{kingma_ba_2015_adam}.
+
+\begin{algorithm}
+  \caption{Adam (adaptive moment estimation)}
+  \label{alg:adam}
+  \begin{algorithmic}[1]
+    \Require Functions $f_1,\dots,f_n$, step size $\alpha>0$, decay rates $\beta_1,\beta_2\in(0,1)$, $\epsilon>0$, batch size $B$, initial point $x_0$, number of steps $T$
+    \Ensure Iterate $x_T$
+    \State $m_0 \gets 0$, $v_0 \gets 0$
+    \For{$k=1,2,\dots,T$}
+      \State Sample a mini-batch $S_k \subseteq \{1,\dots,n\}$ of size $B$ (with replacement)
+      \State $g_k \gets \frac{1}{B}\sum_{i\in S_k} \nabla f_i(x_{k-1})$ \Comment{stochastic gradient}
+      \State $m_k \gets \beta_1 m_{k-1} + (1-\beta_1) g_k$ \Comment{first moment}
+      \State $v_k \gets \beta_2 v_{k-1} + (1-\beta_2) (g_k \odot g_k)$ \Comment{second moment (elementwise)}
+      \State $\hat m_k \gets \dfrac{m_k}{1-\beta_1^k}$, $\hat v_k \gets \dfrac{v_k}{1-\beta_2^k}$ \Comment{bias correction}
+      \State $x_k \gets x_{k-1} - \alpha \, \hat m_k \odot \frac{1}{\sqrt{\hat v_k}+\epsilon}$ \Comment{all operations elementwise}
+    \EndFor
+    \State \Return $x_T$
+  \end{algorithmic}
+\end{algorithm}
+
+Common default choices are $\beta_1=0.9$, $\beta_2=0.999$, and $\epsilon=10^{-8}$ \citep[\S2 and Alg.~1]{kingma_ba_2015_adam}.
+In many applications these are kept near their defaults and one primarily tunes the global step size $\alpha$.
+The parameter $\beta_1$ controls how quickly the momentum estimate forgets past directions, while $\beta_2$ controls the memory length of the squared-gradient estimate.
+A useful rule of thumb is that $\beta_2$ averages over about $1/(1-\beta_2)$ iterations, so $\beta_2=0.999$ corresponds to a window on the order of $10^3$ updates.
+Increasing $\beta_2$ makes the denominator steadier, which is often helpful when mini-batch gradients are very noisy; decreasing it makes the scaling react faster after a curvature change or a long plateau, but can make the effective coordinatewise step sizes much more erratic.
+Values of $\beta_2$ close to $1$ are especially common when gradients are sparse or highly variable across iterations, because then a longer memory stabilizes the second-moment estimate \citep[\S6.4]{kingma_ba_2015_adam}.
+
+The moving average $m_k$ is Adam's momentum-like state, and the second-moment estimate $v_k$ is its adaptive scaling state.
+If a particular coordinate has very large or very noisy gradients, then the corresponding entries of $v_k$ grow, and dividing by $\sqrt{\hat v_k}+\epsilon$ reduces the effective step size in that coordinate.
+This behavior is reminiscent of diagonal preconditioning, and it can be particularly effective when the objective has strong anisotropy (e.g.\ very different curvature or gradient scales across coordinates).
+
+Unrolling the recursions shows that $m_k$ and $v_k$ are exponential moving averages:
+\[
+  m_k = (1-\beta_1)\sum_{i=1}^k \beta_1^{k-i} g_i,
+  \qquad
+  v_k = (1-\beta_2)\sum_{i=1}^k \beta_2^{k-i} (g_i \odot g_i).
+\]
+The bias-corrected quantities $\hat m_k$ and $\hat v_k$ renormalize these weights so that, roughly speaking, they behave like averages rather than sums during the early iterations (when $m_k$ and $v_k$ are still close to $0$).
+Compared with dual averaging, the key change is that the memory is now exponential rather than cumulative.
+That makes the method responsive to nonstationary gradient scales, which is useful in mini-batch training, but it also means the method is best understood as a practical adaptive heuristic rather than as a direct extension of the deterministic acceleration formulas above.
+This flexibility comes with an important caveat.
+Because $v_k$ is an exponential moving average rather than a monotone accumulator, the coordinatewise denominator can decrease after a transient, so the effective learning rates can increase again.
+There are convex examples where the original Adam recursion fails to converge to the minimizer for exactly this reason \citep[\S3--\S4]{reddi_kale_kumar_2018_adam_beyond}.
+The same analysis motivates ``long-memory'' fixes such as AMSGrad, which replace the raw second-moment estimate by a coordinatewise running maximum to prevent this denominator from decreasing \citep[\S4]{reddi_kale_kumar_2018_adam_beyond}.
+That is why Adam belongs in the ``practical adaptive method'' bucket rather than in the same guarantee class as gradient descent or NAG.
+
+\subsubsection{Scope-limited tuning guidance}
+\label{subsubsec:momentum-tuning-stopping}
+
+Tuning guidance for momentum methods is family-specific.
+For heavy-ball and NAG on deterministic smooth problems, the step sizes $\alpha_k$ play the same role as in gradient descent: one can use a hand-tuned constant, a decreasing schedule, or, when $f$ is cheap enough to evaluate, a line search.
+The momentum parameters $\beta_k\in[0,1)$ control how quickly the method forgets past velocities.
+In practice a constant $\beta$ in the range $0.8$--$0.95$ is a common heuristic starting point, and one lowers it if the iterates exhibit persistent oscillations in steep directions.
+
+When global curvature bounds are known, more structured formulas are available, but they are tied to specific recursions rather than to ``momentum methods'' as a whole.
+For example, if $f$ is twice differentiable and satisfies
+\[
+  mI \preceq \Hess f(x) \preceq LI
+  \qquad \text{for all } x \text{ in the region explored,}
+\]
+then $\alpha_k\equiv 1/L$ is a natural step-size scale for the NAG update \eqref{eq:nag-two-point}, and a common strongly-convex choice is
+\[
+  \beta_k \equiv \frac{\sqrt{L}-\sqrt{m}}{\sqrt{L}+\sqrt{m}}
+  = \frac{\sqrt{\kappa}-1}{\sqrt{\kappa}+1},
+  \qquad \kappa \coloneqq \frac{L}{m}.
+\]
+Heavy-ball has a different parameter analysis even on quadratic objectives, so this formula should not be read as a generic prescription for every two-step method.
+For merely convex problems, a popular increasing-momentum schedule is
+\begin{equation}
+  \beta_k = \frac{t_k-1}{t_{k+1}},
+  \qquad
+  t_1 = 1,
+  \qquad
+  t_{k+1} = \frac{1+\sqrt{1+4t_k^2}}{2},
+  \label{eq:fista-momentum}
+\end{equation}
+which is the momentum rule used in FISTA-type accelerated methods.
+Neither formula should be transplanted wholesale to noisy mini-batch settings: they are derived for structured smooth convex regimes, not for general adaptive training.
+
+For dual averaging, the main design choice is the prox geometry together with the scale sequence $\eta_k$.
+Larger $\eta_k$ lets current gradients dominate more quickly, while smaller $\eta_k$ keeps the regularization effect of $\psi$ active for longer.
+This is the right method family when constraints or non-Euclidean geometry matter, not when one merely wants a faster version of heavy-ball.
+
+For Adam, one usually keeps $\beta_1$ and $\epsilon$ near their standard defaults and tunes the global step size $\alpha$.
+The main extra family-specific choice is $\beta_2$: larger values smooth the denominator when stochastic gradients are very noisy, while smaller values make the scaling react faster after a plateau or regime change.
+Those defaults are conventions rather than universal constants, so the safest interpretation is that Adam trades some theoretical clarity for a robust, easy-to-tune implementation pattern.
+In large-scale learning problems, a fixed number of parameter updates is often used as a stopping rule.
+Another common approach is early stopping: periodically evaluate a held-out validation metric and stop if it does not improve for a chosen number of checks.
+Finally, when full-gradient evaluations are feasible, or on a sufficiently large subsample, one can stop when $\norm{\nabla f(x_k)}_2$ is below a chosen tolerance.

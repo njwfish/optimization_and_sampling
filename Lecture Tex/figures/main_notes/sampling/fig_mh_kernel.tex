@@ -1,0 +1,24 @@
+\begin{tikzpicture}[>=Stealth,font=\small]
+  \tikzset{
+    state/.style={
+      circle,
+      draw=stat221Blue!60!black,
+      fill=stat221BlueLight,
+      line width=0.8pt,
+      minimum size=14mm,
+      inner sep=0pt,
+    },
+  }
+  \node[state] (x) {$x$};
+  \node[state, right=7.8cm of x] (y) {$y$};
+
+  \draw[->, stat221Blue, line width=0.9pt]
+    (x) -- node[above,font=\small,align=center,text width=7.0cm]
+      {propose $y\sim q(\cdot\mid x)$\\accept with prob.\ $\alpha(x,y)$}
+    (y);
+
+  \draw[->, stat221Gray!70, line width=0.9pt]
+    (x) to[out=235,in=305,looseness=8]
+      node[below,align=center] {reject\\(stay at $x$)}
+    (x);
+\end{tikzpicture}

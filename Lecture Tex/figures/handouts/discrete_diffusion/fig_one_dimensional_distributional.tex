@@ -1,0 +1,80 @@
+\begin{tikzpicture}[font=\small]
+  \tikzset{
+    panel/.style={
+      rounded corners=7pt,
+      draw=stat221Gray!30,
+      fill=stat221GrayLight,
+      line width=0.85pt,
+    },
+    infobox/.style={
+      rounded corners=5pt,
+      draw=stat221Blue!55!black,
+      fill=white,
+      line width=0.85pt,
+      inner sep=8pt,
+      text width=4.6cm,
+      align=left,
+    },
+    coordlabel/.style={
+      font=\footnotesize,
+      fill=white,
+      inner sep=1.5pt,
+      text=stat221Gray,
+    },
+  }
+
+  \path[use as bounding box] (-0.1,-0.1) rectangle (13.9,5.25);
+  \draw[panel] (0,0) rectangle (13.7,4.95);
+
+  \node[font=\small\bfseries,text=stat221Gray] at (3.10,4.58)
+    {The posterior lives in the simplex};
+  \node[font=\small\bfseries,text=stat221Gray] at (10.28,4.58)
+    {Its coordinates are the reverse rates};
+
+  \coordinate (A) at (0.95,0.78);
+  \coordinate (B) at (5.85,0.78);
+  \coordinate (C) at (3.40,3.95);
+  \coordinate (P) at (2.76,1.50);
+
+  \fill[white] (A) -- (B) -- (C) -- cycle;
+  \draw[stat221Gray!70,line width=1.05pt] (A) -- (B) -- (C) -- cycle;
+
+  % Constant-coordinate lines through the posterior point.
+  \draw[stat221Blue!70!black,densely dashed,line width=1.0pt]
+    ($(A)!0.5!(B)$) -- ($(A)!0.5!(C)$);
+  \draw[stat221Green!70!black,densely dashed,line width=1.0pt]
+    ($(B)!0.3!(A)$) -- ($(B)!0.3!(C)$);
+  \draw[stat221Purple!70!black,densely dashed,line width=1.0pt]
+    ($(C)!0.2!(A)$) -- ($(C)!0.2!(B)$);
+
+  \filldraw[fill=stat221BlueLight,draw=stat221Blue!70!black,line width=0.9pt] (A) circle (0.16);
+  \filldraw[fill=stat221GreenLight,draw=stat221Green!70!black,line width=0.9pt] (B) circle (0.16);
+  \filldraw[fill=stat221PurpleLight,draw=stat221Purple!70!black,line width=0.9pt] (C) circle (0.16);
+  \node[font=\small\bfseries,text=stat221Blue!75!black] at ($(A)+(-0.38,-0.28)$) {\(A\)};
+  \node[font=\small\bfseries,text=stat221Green!60!black] at ($(B)+(0.38,-0.28)$) {\(B\)};
+  \node[font=\small\bfseries,text=stat221Purple!60!black] at ($(C)+(0.00,0.35)$) {\(C\)};
+
+  \filldraw[fill=stat221Gray,draw=white,line width=0.9pt] (P) circle (0.12);
+  \draw[stat221Gray!60,line width=0.8pt] (P) -- +(0.55,0.55);
+  \node[font=\small,text=stat221Gray,align=left] at ($(P)+(0.68,0.68)$)
+    {\(\mu_t(x)\)};
+  \node[font=\scriptsize,text=stat221Gray,align=left] at ($(P)+(0.92,0.28)$)
+    {\(=q_{0\mid t}(\cdot\mid x)\)};
+
+  \node[coordlabel,text=stat221Blue!75!black] at (1.80,2.38) {\(A=0.5\)};
+  \node[coordlabel,text=stat221Green!60!black] at (4.85,2.10) {\(B=0.3\)};
+  \node[coordlabel,text=stat221Purple!60!black] at (2.35,1.02) {\(C=0.2\)};
+
+  \node[infobox] (info) at (10.30,2.45) {%
+    \(\displaystyle \mu_t(x)=(0.5,\,0.3,\,0.2)\)
+
+    \vspace{0.45em}
+    \textcolor{stat221Blue!75!black}{\(Q_t^{\mathrm{rev}}(A\mid x)=0.5\,c_t\)}
+
+    \textcolor{stat221Green!60!black}{\(Q_t^{\mathrm{rev}}(B\mid x)=0.3\,c_t\)}
+
+    \textcolor{stat221Purple!60!black}{\(Q_t^{\mathrm{rev}}(C\mid x)=0.2\,c_t\)}
+
+    \vspace{0.55em}
+    The reverse generator is \(c_t\) times these coordinates.};
+\end{tikzpicture}

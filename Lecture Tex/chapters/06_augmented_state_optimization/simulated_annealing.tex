@@ -1,0 +1,183 @@
+\subsection{Simulated annealing}
+\label{subsec:simulated-annealing}
+
+Gradient descent and its stochastic variants are fundamentally local search methods.
+They can move quickly once they are inside a good basin, but on objectives with several separated local minima, saddles, or energy barriers they do not provide a reliable global-optimization strategy.
+One response is to use careful initialization; another is brute force, i.e.\ many dispersed restarts followed by local refinement.
+Simulated annealing takes a different approach:
+it combines the accept--reject mechanism of Metropolis--Hastings with a temperature schedule that is high at the beginning and small later on.
+Here the auxiliary mechanism is the scalar temperature itself.
+At iteration $k$ the method works on an enlarged description $(x,T_k)$ rather than on the state $x$ alone: the temperature temporarily changes the landscape, then is cooled back toward the original optimization problem.
+The high-temperature phase makes it easier to leave poor local minima, while the low-temperature phase gradually concentrates the search near low-energy states.
+
+\subsubsection{Boltzmann targets and temperature flattening}
+\label{subsubsec:sa-tempered-targets}
+
+Let $f:\mathcal{X}\to\R$ be the objective we want to minimize.
+For each temperature $T>0$, define the Gibbs or Boltzmann distribution
+\begin{equation}
+  \pi_T(x)
+  \coloneqq
+  \frac{\exp(-f(x)/T)}{Z_T},
+  \qquad
+  Z_T \coloneqq \int_{\mathcal{X}} \exp(-f(x)/T)\,dx,
+  \label{eq:sa-boltzmann}
+\end{equation}
+with the integral replaced by a sum when $\mathcal{X}$ is discrete.
+The theoretical probabilistic interpretation requires $Z_T<\infty$, but the algorithm itself only uses ratios of the form $\pi_T(y)/\pi_T(x)$, so the normalizing constant never needs to be computed explicitly.
+
+Two simple facts explain why \eqref{eq:sa-boltzmann} is useful.
+First, for every $T>0$, maximizing $\pi_T(x)$ is exactly the same as minimizing $f(x)$ because the map $u\mapsto e^{-u/T}$ is strictly decreasing.
+Second, temperature controls how strongly energy differences are emphasized.
+When $T$ is large, the factor $e^{-f(x)/T}$ changes slowly with $f(x)$, so the target is relatively flat.
+When $T$ is small, differences in objective value are amplified and the mass concentrates around the lowest-energy states.
+
+\begin{figure}[t]
+  \centering
+  \input{figures/main_notes/augmented_state_optimization/fig_sa_temperature_flattening}
+  \caption{For a fixed two-well objective (shown faintly in gray after rescaling), the quantities proportional to $\exp(-f(x)/T)$ are much flatter when $T$ is large and much more concentrated near low-energy states when $T$ is small.
+  Simulated annealing exploits this by exploring broadly while the system is hot and becoming increasingly selective as it cools.}
+  \label{fig:sa-temperature-flattening}
+\end{figure}
+
+Thinking of $T$ as a physical temperature gives the right intuition:
+when the system is hot, the wells of the landscape are relatively shallow, so movement between them is easier;
+when the system is cold, those same wells become deep, and the dynamics become much more reluctant to move uphill.
+\Cref{fig:sa-temperature-flattening} makes this concrete: the hot distribution still assigns substantial mass to the higher-energy local well and even to the barrier region, whereas the cold distribution is sharply concentrated near the global well.
+
+\subsubsection{Metropolis updates and simulated annealing}
+\label{subsubsec:sa-mh-view}
+
+Suppose that at a fixed temperature $T$ we use a proposal kernel $q(y\mid x)$.
+If we were running an ordinary Metropolis--Hastings chain targeting $\pi_T$, then the acceptance probability would be
+\begin{equation}
+  \alpha_T(x,y)
+  =
+  \min\left\{
+    1,\,
+    \exp\!\left(-\frac{f(y)-f(x)}{T}\right)\frac{q(x\mid y)}{q(y\mid x)}
+  \right\}.
+  \label{eq:sa-mh-ratio}
+\end{equation}
+For a symmetric random-walk proposal, $q(y\mid x)=q(x\mid y)$, so \eqref{eq:sa-mh-ratio} simplifies to
+\begin{equation}
+  \alpha_T(x,y)
+  =
+  \min\left\{
+    1,\,
+    \exp\!\left(-\frac{f(y)-f(x)}{T}\right)
+  \right\}.
+  \label{eq:sa-symmetric-acceptance}
+\end{equation}
+This form is especially transparent:
+downhill moves ($f(y)\le f(x)$) are always accepted, while uphill moves are accepted with a probability that decays exponentially in the energy increase $f(y)-f(x)$.
+Large temperature makes uphill moves fairly likely; small temperature suppresses them.
+Temperature turns uphill acceptance into a controllable exploration mechanism: hot chains are willing to climb barriers, while cold chains behave much more like descent.
+
+Simulated annealing uses the same accept--reject idea, but with a nonincreasing sequence of temperatures
+\[
+  T_0 \ge T_1 \ge T_2 \ge \cdots \downarrow 0.
+\]
+At iteration $k$, the algorithm updates the pair $(x^{(k)},T_k)$ by holding the temperature fixed at its current value and performing a Metropolis--Hastings step for the target $\pi_{T_k}$.
+Because the temperature changes over time, the chain is no longer trying to sample from one fixed distribution.
+Instead, it gradually transitions from exploratory dynamics at high temperature to almost-greedy local search at low temperature.
+
+\begin{algorithm}
+  \caption{Random-walk simulated annealing}
+  \label{alg:simulated-annealing}
+  \begin{algorithmic}[1]
+    \Require Objective $f$, symmetric proposal kernel $q(\cdot\mid x)$, temperatures $T_0,\dots,T_{K-1}$ with $T_{k+1}\le T_k$, initial state $x^{(0)}$
+    \Ensure Best state encountered during the run
+    \State $x_{\mathrm{best}} \gets x^{(0)}$, $f_{\mathrm{best}} \gets f(x^{(0)})$
+    \For{$k=0,1,\dots,K-1$}
+      \State Sample a proposal $y \sim q(\cdot\mid x^{(k)})$
+      \State $\alpha_k \gets \min\!\left\{1,\exp\!\left(-(f(y)-f(x^{(k)}))/T_k\right)\right\}$
+      \State Draw $U_k \sim \mathrm{Unif}[0,1]$
+      \If{$U_k \le \alpha_k$}
+        \State $x^{(k+1)} \gets y$
+      \Else
+        \State $x^{(k+1)} \gets x^{(k)}$
+      \EndIf
+      \If{$f(x^{(k+1)}) < f_{\mathrm{best}}$}
+        \State $x_{\mathrm{best}} \gets x^{(k+1)}$, $f_{\mathrm{best}} \gets f(x^{(k+1)})$
+      \EndIf
+    \EndFor
+    \State \Return $x_{\mathrm{best}}$
+  \end{algorithmic}
+\end{algorithm}
+
+The best-so-far bookkeeping is important.
+Even when the current state wanders away from a good point, the algorithm retains the lowest objective value it has seen so far.
+For asymmetric proposals one simply replaces the acceptance formula in \cref{alg:simulated-annealing} by the full Metropolis--Hastings ratio \eqref{eq:sa-mh-ratio}.
+As $T_k$ becomes small, the chain behaves more and more like randomized local descent on $f$, but the early hot phase is what gives the method a chance to reach a good basin before that local behavior takes over.
+
+\subsubsection{Cooling schedules and global guarantees}
+\label{subsubsec:sa-schedules}
+
+If one wants theorem-level global guarantees rather than a practical heuristic, the cooling schedule must be extremely slow.
+A classical theorem-level schedule is logarithmic cooling of the form
+\begin{equation}
+  T_k = \frac{c}{\log(k+k_0)},
+  \qquad c>0,
+  \label{eq:sa-logarithmic}
+\end{equation}
+in the finite-state Gibbs setting analyzed by \citet[eq.~(12.7), Thm.~C, and p.~732]{geman_geman_1984_stochastic_relaxation}.
+In that theorem, the constant $c$ is problem-dependent and reflects the barrier structure of the energy landscape.
+These schedules are slow precisely because they are designed to give the algorithm enough time to escape increasingly deep local wells.
+We are using \eqref{eq:sa-logarithmic} only as a theorem-level schematic, not as a drop-in prescription: outside that finite-state setting, the exact hypotheses and constants depend delicately on the proposal kernel and the geometry of the state space.
+Its message is structural: provable global exploration is much slower than the schedules people usually want to run.
+
+\subsubsection{Practical schedules and proposal design}
+\label{subsubsec:sa-practical}
+
+The proposal distribution matters just as much here as it does in ordinary Metropolis--Hastings.
+For continuous state spaces, Gaussian random-walk proposals are a common default.
+On structured discrete spaces, one instead designs local combinatorial moves that preserve validity of the state, such as swaps, reversals, or Gibbs-style coordinate updates.
+
+In practical computation one often uses faster heuristics such as a linear schedule
+\begin{equation}
+  T_k = T_{\max} - \frac{k}{K}\bigl(T_{\max}-T_{\min}\bigr),
+  \label{eq:sa-linear}
+\end{equation}
+or an exponential schedule
+\begin{equation}
+  T_k = T_{\max}\alpha^k,
+  \qquad \alpha \in (0,1),
+  \label{eq:sa-exponential}
+\end{equation}
+because they cool more aggressively.
+These schedules are heuristics: they often work far better computationally than logarithmic cooling, but they do not come with the same global guarantee.
+Cool too quickly and the method behaves like a greedy local search that may freeze in a poor basin; cool more slowly and the method explores better, but at higher computational cost.
+The temperature schedule is therefore the main dial that trades global exploration against local refinement.
+Because the method is stochastic and still sensitive to initialization, one often runs several independent seeds and compares the best objective values they find rather than treating a single annealing trajectory as definitive.
+That comparison separates two questions that are easy to conflate in a single run: whether one schedule explores a basin effectively once it reaches it, and whether the overall procedure reliably reaches good basins at all.
+
+This tension between hot exploration and cold exploitation is the bridge to tempering in the next unit.
+Simulated annealing commits to a single cooling schedule and eventually gives up the hot dynamics.
+Tempering keeps a finite ladder of hot auxiliary distributions alive throughout the run and couples them to the cold target, so barrier-crossing remains available even after the chain has returned to the original distribution; see \Cref{subsec:tempering}.
+
+\begin{example}[Traveling salesman and a 2-opt proposal]
+\label{ex:sa-tsp}
+Given locations $z_1,\dots,z_n\in\R^2$, a tour is a permutation $\sigma=(i_1,\dots,i_n)$ of $\{1,\dots,n\}$.
+The traveling-salesman objective is
+\[
+  f(\sigma)
+  =
+  \sum_{j=1}^{n} \norm{z_{i_j}-z_{i_{j+1}}}_2,
+  \qquad i_{n+1}\coloneqq i_1,
+\]
+and the goal is to minimize $f(\sigma)$ over all tours.
+This problem is NP-hard, so exhaustive search is generally impossible.
+
+A standard symmetric proposal is the \emph{2-opt} move:
+choose two indices $a<b$ and reverse the segment $(i_a,i_{a+1},\dots,i_b)$.
+This keeps the tour valid while making a large enough local change to repair bad crossings or reorganize an awkward portion of the route.
+Because the move is symmetric, the acceptance probability is exactly \eqref{eq:sa-symmetric-acceptance}.
+Early in the run the algorithm is willing to accept a longer tour if that helps reorganize the route; later, once the temperature is small, it behaves much more like a greedy local improvement method.
+
+The handwritten comparison on one fixed TSP instance made the schedule tradeoff concrete.
+A very short aggressive schedule froze quickly and often kept visibly poor crossings, because the chain stopped accepting uphill reorganizations before the 2-opt proposals had time to rearrange the route.
+A longer linear schedule improved the tour more reliably, and a slower exponential schedule typically produced the cleanest final route on that example.
+The point was not that one named schedule always dominates.
+It was that schedule length has to be matched to the proposal's ability to make useful large-scale repairs before the search becomes effectively greedy.
+\end{example}

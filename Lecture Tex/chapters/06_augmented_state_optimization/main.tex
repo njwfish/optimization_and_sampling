@@ -1,0 +1,10 @@
+\section{Augmented-state optimization}
+\label{sec:augmented-state-optimization}
+
+Augmented-state optimization enlarges the variable we update rather than working only in the original decision variable.
+The added state is chosen so that the enlarged dynamics are easier to stabilize, explore, or optimize while remaining tied to the original objective.
+Momentum adds velocity, simulated annealing adds temperature, and EM introduces latent variables; in each case the auxiliary quantity makes a difficult optimization problem more tractable.
+
+\input{chapters/06_augmented_state_optimization/momentum_methods}
+\input{chapters/06_augmented_state_optimization/simulated_annealing}
+\input{chapters/06_augmented_state_optimization/expectation_maximization}

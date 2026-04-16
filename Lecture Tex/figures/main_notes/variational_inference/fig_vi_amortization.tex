@@ -1,0 +1,40 @@
+\begin{tikzpicture}[>=Stealth,font=\footnotesize]
+  \path[use as bounding box] (-0.15,-0.1) rectangle (12.95,4.65);
+
+  \begin{scope}
+    \node[anchor=west] at (0.25,4.0) {classical local VI};
+    \draw[stat221Gray!35,line width=0.4pt] (6.15,0.35) -- (6.15,4.10);
+
+    \foreach \idx/\y/\xl/\ll in {
+      1/3.15/$x_1$/$\lambda_1$,
+      2/2.20/$x_2$/$\lambda_2$,
+      3/1.25/$x_3$/$\lambda_3$
+    }{
+      \node[draw=stat221Blue!55!black,fill=stat221BlueLight,rounded corners=2pt,minimum width=1.05cm,minimum height=0.62cm] (x\idx) at (1.35,\y) {\xl};
+      \node[draw=stat221Gray!60!black,fill=white,rounded corners=2pt,minimum width=1.35cm,minimum height=0.62cm] (l\idx) at (4.65,\y) {\ll};
+      \draw[->,stat221Gray!75,line width=0.7pt] (x\idx.east) -- (l\idx.west);
+      \node[stat221Gray,anchor=south] at (3.00,\y+0.12) {solve};
+    }
+
+    \node[stat221Gray,align=center] at (3.0,0.30) {one separate optimization\\for each observation};
+  \end{scope}
+
+  \begin{scope}[shift={(6.65,0)}]
+    \node[anchor=west] at (0.35,4.0) {amortized VI};
+
+    \node[draw=stat221Purple!65!black,fill=stat221PurpleLight,rounded corners=3pt,minimum width=2.15cm,minimum height=2.8cm,align=center] (enc) at (3.25,2.2) {shared encoder\\$q_\phi(z\mid x)$};
+
+    \foreach \idx/\y/\xl/\ql in {
+      1/3.15/$x_1$/$q_\phi(z\mid x_1)$,
+      2/2.20/$x_2$/$q_\phi(z\mid x_2)$,
+      3/1.25/$x_3$/$q_\phi(z\mid x_3)$
+    }{
+      \node[draw=stat221Blue!55!black,fill=stat221BlueLight,rounded corners=2pt,minimum width=1.05cm,minimum height=0.62cm] (rx\idx) at (0.9,\y) {\xl};
+      \node[draw=stat221Green!60!black,fill=stat221GreenLight,rounded corners=2pt,minimum width=2.15cm,minimum height=0.62cm] (rq\idx) at (5.85,\y) {\ql};
+      \draw[->,stat221Gray!75,line width=0.7pt] (rx\idx.east) -- (enc.west |- 0,\y);
+      \draw[->,stat221Gray!75,line width=0.7pt] (enc.east |- 0,\y) -- (rq\idx.west);
+    }
+
+    \node[stat221Gray,align=center] at (3.25,0.30) {one learned map reused\\for every observation};
+  \end{scope}
+\end{tikzpicture}

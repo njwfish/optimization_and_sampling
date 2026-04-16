@@ -1,0 +1,19 @@
+\subsection{Geometry and conditioning}
+\label{subsec:conditioning}
+
+The next issue is not whether a direction is locally correct, but how the surrounding geometry scales that direction.
+Condition numbers summarize how anisotropic the local quadratic model is, and preconditioning changes the geometry of the update to compensate.
+These same ideas about geometry control return later in gradient-based MCMC, HMC, and diffusion models.
+
+\subsubsection{Conditioning}
+
+\input{chapters/01_optimization/chunks/gd_06_body}
+
+\subsubsection{Preconditioning}
+\label{subsec:preconditioning}
+
+\input{chapters/01_optimization/chunks/gd_08_body}
+
+Preconditioning still asks us to choose a metric from outside the objective.
+Second-order methods push the same idea one step further by building the metric from the local Hessian itself.
+That shift turns every update into a structured linear-algebra problem, which is the next layer of the optimization story.

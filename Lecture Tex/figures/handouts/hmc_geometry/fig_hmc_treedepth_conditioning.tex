@@ -1,0 +1,107 @@
+\begin{tikzpicture}[>=Stealth,font=\footnotesize]
+  \tikzset{
+    treePanel/.style={
+      rounded corners=5pt,
+      draw=stat221Gray!30,
+      fill=white,
+      line width=0.8pt,
+    },
+    treeTitle/.style={
+      font=\footnotesize\bfseries,
+      text=stat221Gray!92,
+      align=center,
+    },
+    treeNote/.style={
+      font=\scriptsize,
+      text=stat221Gray!88,
+      align=center,
+    },
+    treeBadge/.style={
+      rounded corners=2.5pt,
+      inner sep=2.5pt,
+      font=\scriptsize,
+    },
+    treeChip/.style={
+      rounded corners=4pt,
+      inner xsep=7pt,
+      inner ysep=4pt,
+      align=center,
+      text width=3.35cm,
+      font=\scriptsize,
+    },
+    shellLine/.style={draw=stat221Gray!42, line width=0.55pt},
+  }
+
+  \path[use as bounding box] (-0.15,-0.15) rectangle (13.35,4.95);
+
+  % --- Left comparison panel ---
+  \draw[treePanel,fill=white] (0,0) rectangle (8.58,4.72);
+  \draw[stat221Gray!22,line width=0.55pt] (4.29,0.42) -- (4.29,4.28);
+
+  \node[treeTitle] at (4.29,4.30) {Conditioning mismatch versus whitening};
+
+  % Poor metric
+  \node[treeTitle] at (2.14,3.90) {Poor metric};
+  \begin{scope}[shift={(2.14,2.20)}]
+    \draw[->,stat221Gray!65,line width=0.5pt] (-1.78,0) -- (1.95,0);
+    \draw[->,stat221Gray!65,line width=0.5pt] (0,-1.42) -- (0,1.62);
+    \draw[shellLine] (0,0) ellipse (1.52 and 0.42);
+    \draw[shellLine] (0,0) ellipse (1.16 and 0.32);
+    \draw[shellLine,dashed] (0,0) ellipse (1.34 and 0.37);
+    \draw[stat221Blue!82!black,line width=1.55pt]
+      (-1.28,-0.18)
+      .. controls (-0.64,-0.43) and (0.50,-0.42) .. (1.08,-0.15)
+      .. controls (1.30,-0.03) and (1.40,0.14) .. (1.30,0.30);
+    \foreach \x/\y in {-1.28/-0.18, -0.92/-0.29, -0.54/-0.36, -0.12/-0.38, 0.32/-0.33, 0.72/-0.26, 1.00/-0.17} {
+      \fill[stat221Blue!82!black] (\x,\y) circle (1.00pt);
+    }
+    \draw[stat221Red!82!black,line width=1.45pt,->] (1.05,-0.14) -- ++(0.16,0.54);
+    \node[treeBadge,fill=stat221OrangeLight,text=stat221Red!82!black,anchor=north] at (0,-0.92)
+      {small $\epsilon$ from the stiff mode};
+  \end{scope}
+  \node[treeNote] at (2.14,0.48) {stable, but step-hungry};
+
+  % Whitened metric
+  \node[treeTitle] at (6.44,3.90) {Whitened metric};
+  \begin{scope}[shift={(6.44,2.18)}]
+    \draw[->,stat221Gray!65,line width=0.5pt] (-1.78,0) -- (1.95,0);
+    \draw[->,stat221Gray!65,line width=0.5pt] (0,-1.42) -- (0,1.62);
+    \draw[shellLine] (0,0) ellipse (1.02 and 1.02);
+    \draw[shellLine] (0,0) ellipse (0.68 and 0.68);
+    \draw[shellLine,dashed] (0,0) ellipse (0.85 and 0.85);
+    \draw[stat221Green!72!black,line width=1.75pt,->]
+      ({0.85*cos(22)},{0.85*sin(22)})
+      arc[start angle=22,end angle=208,x radius=0.85,y radius=0.85];
+    \node[treeBadge,fill=stat221GreenLight,text=stat221Green!55!black,anchor=south] at (0,1.18)
+      {$F_M \approx I$};
+    \node[treeBadge,fill=stat221GreenLight,text=stat221Green!55!black,anchor=north] at (0,-1.10)
+      {same shell-crossing, fewer steps};
+  \end{scope}
+  \node[treeNote] at (6.44,0.48) {frequencies equalized by $M$};
+
+  % --- Right budget panel ---
+  \draw[treePanel,fill=white] (8.92,0) rectangle (13.30,4.72);
+  \node[treeTitle] at (11.11,4.12) {Tree-depth budget};
+  \node[treeNote] at (11.11,3.72) {stable does not mean shallow};
+
+  \node[
+    treeChip,
+    fill=stat221BlueLight,
+    draw=stat221Blue!30
+  ] (stable) at (11.11,2.95) {stable steps\\[-1pt] $\epsilon < \frac{2}{\sqrt{\lambda_{\max}}}$};
+
+  \node[
+    treeChip,
+    fill=stat221GreenLight,
+    draw=stat221Green!30
+  ] (slow) at (11.11,1.95) {slow half-turn\\[-1pt] $\tau_{\mathrm{slow}}=\frac{\pi}{\sqrt{\lambda_{\min}}}$};
+
+  \node[
+    treeChip,
+    fill=stat221OrangeLight,
+    draw=stat221Orange!35
+  ] (steps) at (11.11,0.95) {required steps\\[-1pt] $L_{\min}>\frac{\pi}{2}\sqrt{\mathrm{cond}(F_M)}$};
+
+  \draw[->,stat221Gray!45,line width=0.7pt] (stable.south) -- (slow.north);
+  \draw[->,stat221Gray!45,line width=0.7pt] (slow.south) -- (steps.north);
+\end{tikzpicture}

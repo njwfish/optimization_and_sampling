@@ -1,0 +1,44 @@
+\begin{tikzpicture}
+  \begin{axis}[
+    width=0.9\linewidth,
+    height=6.4cm,
+    xmin=-2.6, xmax=2.8,
+    ymin=0, ymax=1.05,
+    axis lines=left,
+    xlabel={$x$},
+    ylabel={relative density},
+    xtick=\empty,
+    ytick={0,0.5,1.0},
+    yticklabels={$0$,$0.5$,$1$},
+    clip=false,
+    legend style={
+      draw=stat221Gray!25,
+      fill=white,
+      fill opacity=0.95,
+      text opacity=1,
+      font=\small,
+      cells={anchor=west},
+      at={(0.98,0.98)},
+      anchor=north east,
+    },
+  ]
+    \addplot[stat221Gray, densely dashed, thick, samples=220, domain=-2.6:2.8]
+      {0.10 + 0.18*(0.18*(x^2-4)^2 + 0.25*x + 0.55)};
+    \addlegendentry{rescaled objective}
+
+    \addplot[stat221Red, thick, samples=220, domain=-2.6:2.8]
+      {exp(-((0.18*(x^2-4)^2 + 0.25*x + 0.505))/1.6)};
+    \addlegendentry{hot: $T=1.6$}
+
+    \addplot[stat221Blue, thick, samples=220, domain=-2.6:2.8]
+      {exp(-((0.18*(x^2-4)^2 + 0.25*x + 0.505))/0.7)};
+    \addlegendentry{warm: $T=0.7$}
+
+    \addplot[stat221Purple, thick, samples=220, domain=-2.6:2.8]
+      {exp(-((0.18*(x^2-4)^2 + 0.25*x + 0.505))/0.25)};
+    \addlegendentry{cold: $T=0.25$}
+
+    \node[font=\scriptsize\color{stat221Gray}, anchor=north] at (axis cs:-2.03,0.09) {global well};
+    \node[font=\scriptsize\color{stat221Gray}, anchor=south] at (axis cs:1.95,0.26) {local well};
+  \end{axis}
+\end{tikzpicture}

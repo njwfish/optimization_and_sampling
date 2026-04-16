@@ -1,0 +1,55 @@
+\begin{tikzpicture}[>=Stealth,font=\footnotesize]
+  \tikzset{
+    elbopanel/.style={
+      draw=stat221Gray!30,
+      fill=white,
+      rounded corners=5pt,
+      line width=0.6pt
+    },
+    elbotitle/.style={font=\small\bfseries, text=stat221Gray!90},
+    elbobadge/.style={
+      rounded corners=2pt,
+      inner sep=2.5pt,
+      font=\scriptsize,
+      text=stat221Gray!85
+    }
+  }
+  \path[use as bounding box] (-0.2,-0.45) rectangle (13.2,4.75);
+
+  \node[elbopanel,minimum width=5.6cm,minimum height=4.25cm,anchor=north west] (leftpanel) at (0.0,4.45) {};
+  \node[elbopanel,minimum width=5.6cm,minimum height=4.25cm,anchor=north west] (rightpanel) at (7.3,4.45) {};
+
+  \node[elbotitle,anchor=north west] at ([xshift=0.28cm,yshift=-0.25cm]leftpanel.north west) {Exact posterior};
+  \node[elbotitle,anchor=north west] at ([xshift=0.28cm,yshift=-0.25cm]rightpanel.north west) {Mean-field surrogate};
+
+  \draw[->,stat221Gray!65,line width=1.0pt] (5.95,2.30) -- (7.00,2.30);
+
+  \begin{scope}[shift={(2.8,1.92)}]
+    \draw[->,stat221Gray!70,line width=0.5pt] (-1.85,0) -- (2.05,0);
+    \draw[->,stat221Gray!70,line width=0.5pt] (0,-1.50) -- (0,1.85);
+    \node[stat221Gray!70,anchor=west] at (2.05,-0.10) {$z_1$};
+    \node[stat221Gray!70,anchor=south] at (-0.08,1.85) {$z_2$};
+    \begin{scope}[rotate around={32:(0,0)}]
+      \fill[stat221Blue!15] (0,0) ellipse (1.62 and 0.58);
+      \draw[stat221Blue!78!black,line width=1.0pt] (0,0) ellipse (1.62 and 0.58);
+    \end{scope}
+    \draw[stat221Blue!70!black,line width=0.8pt,->] (0.48,0.84) .. controls (0.85,1.02) and (1.05,0.95) .. (1.20,0.55);
+    \node[elbobadge,fill=stat221BlueLight,anchor=west,text=stat221Blue!75!black] at (1.25,0.92) {off-diagonal covariance};
+    \node[elbobadge,fill=stat221BlueLight,anchor=north west,text=stat221Blue!78!black] at (-1.55,-1.03) {$\operatorname{Cov}(z_1,z_2)\neq 0$};
+  \end{scope}
+
+  \begin{scope}[shift={(10.05,1.92)}]
+    \draw[->,stat221Gray!70,line width=0.5pt] (-1.85,0) -- (2.05,0);
+    \draw[->,stat221Gray!70,line width=0.5pt] (0,-1.50) -- (0,1.85);
+    \node[stat221Gray!70,anchor=west] at (2.05,-0.10) {$z_1$};
+    \node[stat221Gray!70,anchor=south] at (-0.08,1.85) {$z_2$};
+    \begin{scope}[rotate around={32:(0,0)}]
+      \draw[stat221Blue!65!black,dashed,line width=0.9pt] (0,0) ellipse (1.62 and 0.58);
+    \end{scope}
+    \fill[stat221Green!16] (0,0) ellipse (1.12 and 0.98);
+    \draw[stat221Green!70!black,line width=1.0pt] (0,0) ellipse (1.12 and 0.98);
+    \node[elbobadge,fill=stat221GreenLight,anchor=west,text=stat221Green!55!black] at (0.35,1.02) {axis-aligned product family};
+    \node[elbobadge,fill=stat221GreenLight,anchor=north west,text=stat221Green!55!black] at (-1.58,-1.03) {marginals fit};
+    \node[elbobadge,draw=stat221Red!30,fill=stat221OrangeLight,anchor=north east,text=stat221Red!75!black] at (1.52,-1.03) {$\operatorname{Cov}(z_1,z_2)=0$};
+  \end{scope}
+\end{tikzpicture}

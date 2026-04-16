@@ -1,0 +1,51 @@
+\begin{tikzpicture}[>=Stealth]
+  % Colors for four chains (kept consistent across both panels).
+  \def\cA{stat221Blue}
+  \def\cB{stat221Teal}
+  \def\cC{stat221Orange}
+  \def\cD{stat221Purple}
+
+  \begin{axis}[
+    width=0.46\linewidth,
+    height=5.1cm,
+    xmin=0, xmax=100,
+    ymin=-1.6, ymax=1.6,
+    axis lines=left,
+    axis line style={stat221Gray!60,line width=0.7pt},
+    xtick=\empty,
+    ytick=\empty,
+    xlabel={iteration},
+    ylabel={$h(X_t)$},
+    title={well mixed},
+    title style={font=\footnotesize,yshift=-0.4em},
+    clip=false,
+  ]
+    \addplot[\cA,thin,domain=0:100,samples=250] {0.55*sin(deg(0.22*x)) + 0.22*sin(deg(0.78*x))};
+    \addplot[\cB,thin,domain=0:100,samples=250] {0.55*sin(deg(0.22*x + 0.9)) + 0.22*sin(deg(0.78*x + 1.6))};
+    \addplot[\cC,thin,domain=0:100,samples=250] {0.55*sin(deg(0.22*x + 1.8)) + 0.22*sin(deg(0.78*x + 3.2))};
+    \addplot[\cD,thin,domain=0:100,samples=250] {0.55*sin(deg(0.22*x + 2.7)) + 0.22*sin(deg(0.78*x + 4.8))};
+  \end{axis}
+
+  \begin{axis}[
+    at={(0.52\linewidth,0)},
+    anchor=south west,
+    width=0.46\linewidth,
+    height=5.1cm,
+    xmin=0, xmax=100,
+    ymin=-1.6, ymax=1.6,
+    axis lines=left,
+    axis line style={stat221Gray!60,line width=0.7pt},
+    xtick=\empty,
+    ytick=\empty,
+    xlabel={iteration},
+    ylabel={$h(X_t)$},
+    title={poor mixing},
+    title style={font=\footnotesize,yshift=-0.4em},
+    clip=false,
+  ]
+    \addplot[\cA,thin,domain=0:100,samples=250] {-1.0 + 0.10*sin(deg(0.55*x))};
+    \addplot[\cB,thin,domain=0:100,samples=250] {-0.2 + 0.10*sin(deg(0.55*x + 1.2))};
+    \addplot[\cC,thin,domain=0:100,samples=250] {0.6 + 0.10*sin(deg(0.55*x + 2.4))};
+    \addplot[\cD,thin,domain=0:100,samples=250] {1.1 + 0.003*x + 0.10*sin(deg(0.55*x + 3.6))};
+  \end{axis}
+\end{tikzpicture}

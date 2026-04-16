@@ -1,0 +1,256 @@
+\subsubsection{Conjugate gradient for SPD systems}
+\label{subsec:conjugate-gradient}
+
+Newton's method and many preconditioned updates reduce each iteration to solving a symmetric positive-definite linear system.
+Conjugate gradient is the canonical solver in that setting when matrix--vector products are cheap but dense factorizations are too expensive.
+The Cholesky-based discussion above is the direct-factorization route; CG is the complementary large-scale route when we can apply the geometry but do not want to factor it.
+
+Let $A \in \R^{d\times d}$ be symmetric positive definite (SPD) and let $b \in \R^d$.
+We want to solve the linear system
+\begin{equation}
+  Ax = b.
+  \label{eq:cg-linear-system}
+\end{equation}
+This is equivalent to minimizing the strictly convex quadratic
+\begin{equation}
+  \phi(x) \coloneqq \frac12 x^\top A x - b^\top x.
+  \label{eq:cg-quadratic}
+\end{equation}
+Indeed, $\nabla \phi(x) = Ax-b$, so $\nabla\phi(x^\star)=0$ is exactly \eqref{eq:cg-linear-system}.
+
+In many applications, $A$ is large and sparse, so direct methods (e.g.\ dense elimination) are expensive and can destroy sparsity.
+In such settings we typically do not want to form $A^{-1}$ explicitly; instead we want an algorithm that uses $A$ only through fast matrix--vector products $v\mapsto Av$.
+Also, Newton-type methods for nonlinear optimization repeatedly solve linear systems of the form
+\[
+  \Hess f(x)\,\Delta x = -\nabla f(x),
+\]
+so understanding fast linear solvers is directly relevant to optimization.
+Since $A \succ 0$, it defines an inner product and norm on $\R^d$:
+\[
+  \ip{u,v}_A \coloneqq u^\top A v,
+  \qquad
+  \norm{u}_A \coloneqq \sqrt{u^\top A u}.
+\]
+\label{subsubsec:a-norm}
+We will measure errors in the $A$-norm because it is the natural geometry of~$\phi$.
+Indeed, if $x^\star=A^{-1}b$, then completing the square shows
+\[
+  \phi(x)-\phi(x^\star)=\frac12\norm{x-x^\star}_A^2,
+\]
+so decreasing the quadratic objective is equivalent to shrinking the error in $A$-norm.
+
+Define the residual $r_k \coloneqq b-Ax_k = -\nabla\phi(x_k)$.
+Conjugate gradient generates a sequence of search directions $p_k$ that are mutually $A$-orthogonal (``$A$-conjugate'') and chooses step sizes by exact line search.
+If we were to use steepest descent on $\phi$, we would step in direction $r_k$.
+CG modifies this basic idea by combining gradient information across iterations in a way that avoids repeatedly ``undoing'' progress along previously explored directions.
+\label{subsubsec:cg-alg}
+
+\begin{algorithm}
+  \caption{Conjugate gradient for $Ax=b$ with $A\succ 0$}
+  \label{alg:cg}
+  \begin{algorithmic}[1]
+    \Require SPD matrix $A$, vector $b$, initial point $x_0$
+    \Ensure Approximate solution $x_k$ to $Ax=b$
+    \State $r_0 \gets b-Ax_0$
+    \State $p_0 \gets r_0$
+    \For{$k=0,1,2,\dots$ until converged}
+      \State $\alpha_k \gets \dfrac{r_k^\top r_k}{p_k^\top A p_k}$
+      \State $x_{k+1} \gets x_k + \alpha_k p_k$
+      \State $r_{k+1} \gets r_k - \alpha_k A p_k$
+      \State $\beta_{k+1} \gets \dfrac{r_{k+1}^\top r_{k+1}}{r_k^\top r_k}$
+      \State $p_{k+1} \gets r_{k+1} + \beta_{k+1} p_k$
+    \EndFor
+    \State \Return $x_k$
+  \end{algorithmic}
+\end{algorithm}
+
+CG can be viewed as a descent method for $\phi$ with direction $p_k$ and exact line search. In particular,
+\[
+  \alpha_k \in \argmin_{\alpha\in\R}\, \phi(x_k+\alpha p_k).
+\]
+\label{subsubsec:cg-alpha}
+
+\begin{lemma}[Line search formula]
+\label{lem:cg-alpha}
+For any $x\in\R^d$ and nonzero direction $p$, the minimizer of $\alpha\mapsto \phi(x+\alpha p)$ is
+\[
+  \alpha^\star = \frac{p^\top (b-Ax)}{p^\top A p}.
+\]
+In CG (where $r_k=b-Ax_k$ and $p=p_k$), this yields $\alpha_k = \frac{p_k^\top r_k}{p_k^\top A p_k}$.
+\end{lemma}
+\begin{proof}
+Expand the univariate quadratic:
+\[
+  \phi(x+\alpha p)
+  = \frac12 (x+\alpha p)^\top A (x+\alpha p) - b^\top(x+\alpha p)
+  = \phi(x) + \alpha\,p^\top(Ax-b) + \frac{\alpha^2}{2}p^\top A p.
+\]
+Differentiate and set to zero:
+\[
+  \frac{d}{d\alpha}\phi(x+\alpha p)
+  = p^\top(Ax-b) + \alpha\,p^\top A p
+  = -p^\top(b-Ax) + \alpha\,p^\top A p
+  = 0,
+\]
+so $\alpha^\star = \frac{p^\top(b-Ax)}{p^\top A p}$.
+Since $A\succ 0$ and $p\neq 0$, we have $p^\top A p>0$, so the minimizer is unique.
+In CG, one can show $p_k^\top r_k = r_k^\top r_k$ (see \cref{lem:cg-orthogonality}), giving the stated update in \cref{alg:cg}.
+\end{proof}
+
+\subsubsection{Orthogonality and conjugacy in conjugate gradient}
+\label{subsubsec:cg-orthogonality}
+
+\begin{lemma}[Residual orthogonality and $A$-conjugacy]
+\label{lem:cg-orthogonality}
+For the CG iterates $(x_k,r_k,p_k)$ in \cref{alg:cg}, the following hold for all $i<j$:
+\[
+  p_i^\top r_j = 0,
+  \qquad
+  r_i^\top r_j = 0,
+  \qquad
+  p_i^\top A p_j = 0.
+\]
+In particular, $p_k^\top r_k = r_k^\top r_k$ for all $k$.
+\end{lemma}
+\begin{proof}
+We prove the three identities by induction on $j$.
+For $j=0$, there is nothing to prove.
+
+Assume the identities hold for all pairs $(i,j')$ with $i<j'\le k$.
+We prove them for index $j=k+1$.
+
+First we show that $p_i^\top r_{k+1}=0$ for all $i\le k$.
+We start by proving that $p_k^\top r_k=r_k^\top r_k$.
+For $k=0$ this is immediate since $p_0=r_0$.
+For $k\ge 1$, use $p_k=r_k+\beta_k p_{k-1}$ and the induction hypothesis $p_{k-1}^\top r_k=0$ to get
+\[
+  p_k^\top r_k = r_k^\top r_k + \beta_k p_{k-1}^\top r_k = r_k^\top r_k.
+\]
+Therefore the step size in \cref{alg:cg} can be written as
+\[
+  \alpha_k=\frac{p_k^\top r_k}{p_k^\top A p_k}.
+\]
+Now use $r_{k+1}=r_k-\alpha_k A p_k$ to obtain
+\[
+  p_k^\top r_{k+1} = p_k^\top r_k - \alpha_k p_k^\top A p_k = 0.
+\]
+If $i<k$, then
+\[
+  p_i^\top r_{k+1} = p_i^\top r_k - \alpha_k p_i^\top A p_k = 0-0=0,
+\]
+by the induction hypotheses $p_i^\top r_k=0$ and $p_i^\top A p_k=0$.
+
+Next we show that $r_i^\top r_{k+1}=0$ for all $i\le k$.
+From the direction recurrence $p_j=r_j+\beta_j p_{j-1}$ we can solve for $r_j$:
+\[
+  r_j = p_j - \beta_j p_{j-1},
+\]
+so $r_j\in \mathrm{span}\{p_0,\dots,p_j\}$ for every $j$.
+From the first part, $r_{k+1}$ is orthogonal to every $p_0,\dots,p_k$, hence to every vector in $\mathrm{span}\{p_0,\dots,p_k\}$.
+In particular, for each $i\le k$ (so $r_i\in\mathrm{span}\{p_0,\dots,p_i\}\subseteq \mathrm{span}\{p_0,\dots,p_k\}$) we have $r_i^\top r_{k+1}=0$.
+
+Finally we show that $p_i^\top A p_{k+1}=0$ for all $i\le k$.
+Rearrange the residual update $r_{j+1}=r_j-\alpha_j A p_j$ to express
+\begin{equation}
+  A p_j = \frac{r_j-r_{j+1}}{\alpha_j}.
+  \label{eq:cg-apj-residual-diff}
+\end{equation}
+Fix $i<k$.
+From the second part, $r_{k+1}$ is orthogonal to both $r_i$ and $r_{i+1}$, hence \eqref{eq:cg-apj-residual-diff} gives
+\[
+  r_{k+1}^\top A p_i = \frac{r_{k+1}^\top r_i - r_{k+1}^\top r_{i+1}}{\alpha_i} = 0.
+\]
+Using $p_{k+1}=r_{k+1}+\beta_{k+1}p_k$ and the induction hypothesis $p_k^\top A p_i=0$,
+\[
+  p_{k+1}^\top A p_i = r_{k+1}^\top A p_i + \beta_{k+1} p_k^\top A p_i = 0.
+\]
+For $i=k$, use \eqref{eq:cg-apj-residual-diff} with $j=k$ and the second part ($r_{k+1}^\top r_k=0$):
+\[
+  r_{k+1}^\top A p_k = \frac{r_{k+1}^\top r_k - r_{k+1}^\top r_{k+1}}{\alpha_k}
+  = -\frac{r_{k+1}^\top r_{k+1}}{\alpha_k}.
+\]
+Therefore,
+\[
+  p_{k+1}^\top A p_k
+  = r_{k+1}^\top A p_k + \beta_{k+1} p_k^\top A p_k
+  = -\frac{r_{k+1}^\top r_{k+1}}{\alpha_k} + \frac{r_{k+1}^\top r_{k+1}}{r_k^\top r_k}\,p_k^\top A p_k.
+\]
+Since $\alpha_k = \frac{r_k^\top r_k}{p_k^\top A p_k}$, we have $\frac{1}{\alpha_k}=\frac{p_k^\top A p_k}{r_k^\top r_k}$, and the two terms cancel, giving $p_{k+1}^\top A p_k=0$.
+\end{proof}
+
+The identities in \cref{lem:cg-orthogonality} help explain why CG is effective: each iteration moves in a genuinely new direction in the $A$-geometry, avoiding the ``zig-zag'' behavior of steepest descent on ill-conditioned quadratics.
+
+\subsubsection{Convergence guarantees for conjugate gradient}
+\label{subsubsec:cg-convergence}
+
+Let $x^\star = A^{-1}b$ be the unique solution and write the error $e_k \coloneqq x_k-x^\star$.
+Since $A\succ 0$, the $A$-norm is equivalent to Euclidean norm, and it is the natural norm for measuring the quadratic suboptimality:
+\[
+  \phi(x_k)-\phi(x^\star)=\frac12 \norm{e_k}_A^2.
+\]
+
+\begin{corollary}[Monotonic decrease of the quadratic objective]
+\label{cor:cg-monotone}
+For the CG iterates in \cref{alg:cg}, the quadratic objective is nonincreasing:
+\[
+  \phi(x_{k+1}) \le \phi(x_k)
+  \qquad \text{for all } k\ge 0.
+\]
+Equivalently, the error decreases in $A$-norm: $\norm{e_{k+1}}_A \le \norm{e_k}_A$.
+\end{corollary}
+\begin{proof}
+By exact line search (see \cref{lem:cg-alpha}), $x_{k+1}=x_k+\alpha_k p_k$ minimizes $\alpha\mapsto \phi(x_k+\alpha p_k)$, hence $\phi(x_{k+1})\le \phi(x_k)$.
+The $A$-norm statement follows from $\phi(x)-\phi(x^\star)=\tfrac12\norm{x-x^\star}_A^2$.
+\end{proof}
+
+\begin{theorem}[Finite termination in exact arithmetic]
+\label{thm:cg-finite}
+In exact arithmetic, CG produces the exact solution in at most $d$ iterations.
+More generally, if $A$ has $p$ distinct eigenvalues, CG terminates in at most $p$ iterations.
+\end{theorem}
+\begin{proof}
+If CG terminates early, then $r_k=0$ for some $k$ and therefore $Ax_k=b$.
+Assume it does not terminate before iteration $d$.
+
+By \cref{lem:cg-orthogonality}, the directions $p_0,\dots,p_{d-1}$ are pairwise $A$-conjugate and nonzero.
+In particular they are linearly independent: if $\sum_{i=0}^{d-1} c_i p_i=0$, then multiplying by $p_j^\top A$ and using $p_j^\top A p_i=0$ for $i\neq j$ gives $c_j\,p_j^\top A p_j=0$, hence $c_j=0$ for every $j$.
+Thus $p_0,\dots,p_{d-1}$ form a basis of $\R^d$.
+
+Again by \cref{lem:cg-orthogonality}, we have $p_i^\top r_d=0$ for every $i<d$.
+Since the $p_i$ form a basis, this implies $r_d=0$.
+Therefore $b-Ax_d=r_d=0$, so $x_d$ is the exact solution.
+
+The refinement to $p$ distinct eigenvalues follows from the polynomial characterization of CG (the error is $e_k = q_k(A)e_0$ for a degree-$k$ polynomial $q_k$ with $q_k(0)=1$) and the fact that a degree-$(p-1)$ polynomial can interpolate $1/\lambda$ at $p$ distinct eigenvalues; see \citet[Thm.~11.3.1]{golub_van_loan_2013_matrix_computations}.
+\end{proof}
+
+\begin{theorem}[Condition-number convergence bound]
+\label{thm:cg-kappa}
+Let $\kappa(A)\coloneqq \lambda_{\max}(A)/\lambda_{\min}(A)$ be the spectral condition number.
+Then the CG error satisfies
+\begin{equation}
+  \frac{\norm{e_k}_A}{\norm{e_0}_A}
+  \le 2\left(\frac{\sqrt{\kappa(A)}-1}{\sqrt{\kappa(A)}+1}\right)^k.
+  \label{eq:cg-kappa}
+\end{equation}
+\end{theorem}
+\begin{proof}
+The proof uses the polynomial form $e_k=q_k(A)e_0$ and chooses $q_k$ to be a scaled and shifted Chebyshev polynomial that is small on the spectrum of $A$; see \citet[\S11.3]{golub_van_loan_2013_matrix_computations}.
+\end{proof}
+
+For large $\kappa(A)$, the factor in \eqref{eq:cg-kappa} is well-approximated by an exponential:
+\[
+  \left(\frac{\sqrt{\kappa(A)}-1}{\sqrt{\kappa(A)}+1}\right)^k
+  = \exp\!\left(k\log\frac{\sqrt{\kappa(A)}-1}{\sqrt{\kappa(A)}+1}\right)
+  \approx \exp\!\left(-\frac{2k}{\sqrt{\kappa(A)}}\right).
+\]
+This makes the role of conditioning more transparent: CG typically needs on the order of $\sqrt{\kappa(A)}$ iterations to reduce the error by a constant factor.
+
+CG is particularly attractive when $A$ is sparse and we can compute matrix-vector products $v\mapsto Av$ quickly.
+Each iteration costs one multiplication by $A$ plus a few inner products, so the overall cost can be far below $O(d^3)$ when we only need a moderately accurate solution.
+However, \cref{thm:cg-kappa} shows that poor conditioning (large $\kappa(A)$) slows convergence.
+This motivates \emph{preconditioning}, which replaces $Ax=b$ with an equivalent system with a smaller effective condition number; see \citet[\S5.1]{nocedal_wright_2006_numerical}.
+This is the same basic idea as the preconditioning viewpoint in \cref{subsec:preconditioning}, now applied to linear systems rather than gradient steps.
+
+Finally, note that CG is tailored to SPD systems.
+If $A$ is not symmetric (or not positive definite), one can sometimes reduce to an SPD system (e.g.\ the normal equations $A^\top A x = A^\top b$), but this typically squares the condition number and can significantly worsen numerical stability.
+In such cases one usually prefers Krylov methods designed for the structure of the problem (e.g.\ least-squares methods like LSQR, or nonsymmetric solvers like GMRES).

@@ -1,0 +1,189 @@
+% Stat 221 LaTeX preamble (shared across lecture notes)
+
+% --- Page + typography ---
+\usepackage[margin=1in]{geometry}
+\usepackage[T1]{fontenc}
+\usepackage{libertinus}
+\usepackage{libertinust1math}
+\usepackage[scaled=0.95]{inconsolata}
+\usepackage{microtype}
+
+% --- Math + symbols ---
+\usepackage{amsmath,amssymb,amsthm,mathtools}
+\usepackage{bm}
+
+% --- Layout helpers ---
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{enumitem}
+\usepackage{titlesec}
+\usepackage{fancyhdr}
+\usepackage{xcolor}
+\usepackage[most]{tcolorbox}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+
+% --- Visual style ---
+\definecolor{stat221Blue}{HTML}{1F4E79}
+\definecolor{stat221BlueLight}{HTML}{EAF3FA}
+\definecolor{stat221GrayLight}{HTML}{F6F7FB}
+\definecolor{stat221Gray}{HTML}{2F2F2F}
+\definecolor{stat221Purple}{HTML}{6A3D9A}
+\definecolor{stat221PurpleLight}{HTML}{F3EEFA}
+\definecolor{stat221Gold}{HTML}{9A6B00}
+\definecolor{stat221GoldLight}{HTML}{FFF3D9}
+\definecolor{stat221Teal}{HTML}{0F766E}
+\definecolor{stat221TealLight}{HTML}{EAF7F6}
+\definecolor{stat221Green}{HTML}{2E7D32}
+\definecolor{stat221GreenLight}{HTML}{EDF8EF}
+\definecolor{stat221Orange}{HTML}{B45309}
+\definecolor{stat221OrangeLight}{HTML}{FFF4E8}
+\definecolor{stat221Red}{HTML}{B2182B}
+\colorlet{stat221TitleBack}{stat221Blue!12}
+
+% --- Figures ---
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,calc,positioning,matrix}
+\usepackage{pgfplots}
+\pgfplotsset{compat=1.18}
+
+% --- Bibliography ---
+\usepackage[round]{natbib}
+
+% --- Links and cross-references ---
+\usepackage[colorlinks=true,linkcolor=stat221Blue,citecolor=stat221Blue,urlcolor=stat221Blue]{hyperref}
+\usepackage[nameinlink,capitalise,noabbrev]{cleveref}
+
+% Better names in references.
+\crefname{algorithm}{Algorithm}{Algorithms}
+\Crefname{algorithm}{Algorithm}{Algorithms}
+
+% Refer to all sectioning levels uniformly as "Section".
+\crefname{section}{Section}{Sections}
+\Crefname{section}{Section}{Sections}
+\crefname{subsection}{Section}{Sections}
+\Crefname{subsection}{Section}{Sections}
+\crefname{subsubsection}{Section}{Sections}
+\Crefname{subsubsection}{Section}{Sections}
+
+% Algorithmicx wording.
+\algrenewcommand\algorithmicrequire{\textbf{Input:}}
+\algrenewcommand\algorithmicensure{\textbf{Output:}}
+
+% Avoid duplicate hyperref destinations for algorithmic line numbers.
+\makeatletter
+\providecommand{\theHALG@line}{}
+\renewcommand{\theHALG@line}{ALG@line.\thealgorithm.\arabic{ALG@line}}
+\makeatother
+
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.5em}
+
+\setlist[itemize]{leftmargin=*,topsep=0.25em,itemsep=0.15em}
+\setlist[enumerate]{leftmargin=*,topsep=0.25em,itemsep=0.15em}
+
+\titleformat{\section}{\Large\bfseries\color{stat221Blue}}{\thesection}{0.75em}{}
+\titleformat{\subsection}{\large\bfseries\color{stat221Blue}}{\thesubsection}{0.75em}{}
+\titleformat{\subsubsection}{\bfseries\color{stat221Gray}}{\thesubsubsection}{0.75em}{}
+\titleformat{\part}[display]
+  {\centering\Huge\bfseries\color{stat221Blue}}
+  {}
+  {0pt}
+  {\vspace*{\fill}\partname~\thepart\\[0.6em]}
+  [\vspace*{\fill}\thispagestyle{plain}\clearpage]
+\titlespacing*{\part}{0pt}{0pt}{0pt}
+\titlespacing*{\section}{0pt}{2.2ex plus 0.4ex minus 0.2ex}{1.0ex plus 0.2ex}
+\titlespacing*{\subsection}{0pt}{1.6ex plus 0.3ex minus 0.2ex}{0.6ex plus 0.2ex}
+\titlespacing*{\subsubsection}{0pt}{1.2ex plus 0.2ex minus 0.2ex}{0.3ex plus 0.2ex}
+
+% Make parts full-page dividers: ensure `\part{...}` always starts a new page.
+\let\statOrigPart\part
+\renewcommand{\part}{\clearpage\statOrigPart}
+
+% Keep the document structure uniform:
+% - Show sections, subsections, and subsubsections in the table of contents.
+\setcounter{secnumdepth}{3}
+\setcounter{tocdepth}{3}
+
+\pagestyle{fancy}
+\fancyhf{}
+\lhead{\textsc{Stat 221}}
+\rhead{\nouppercase{\leftmark}}
+\cfoot{\thepage}
+\renewcommand{\headrulewidth}{0.4pt}
+\setlength{\headheight}{14pt}
+\fancypagestyle{plain}{
+  \fancyhf{}
+  \cfoot{\thepage}
+  \renewcommand{\headrulewidth}{0pt}
+}
+
+% --- Theorem environments ---
+\theoremstyle{definition}
+\newtheorem{definition}{Definition}[section]
+\newtheorem{example}[definition]{Example}
+\newtheorem{exercise}[definition]{Exercise}
+
+\theoremstyle{plain}
+\newtheorem{theorem}[definition]{Theorem}
+\newtheorem{proposition}[definition]{Proposition}
+\newtheorem{lemma}[definition]{Lemma}
+\newtheorem{corollary}[definition]{Corollary}
+
+\theoremstyle{remark}
+\newtheorem{remark}[definition]{Remark}
+
+% --- Boxed theorem styling (keeps amsthm counters) ---
+\tcbset{
+  stat221box/.style={
+    enhanced,
+    breakable,
+    lines before break=3,
+    sharp corners,
+    boxrule=0.6pt,
+    coltitle=stat221Gray,
+    fonttitle=\bfseries,
+    left=8pt,right=8pt,top=6pt,bottom=6pt,
+  },
+  stat221titlebox/.style={
+    stat221box,
+    colbacktitle=stat221TitleBack,
+    boxed title style={colback=stat221TitleBack,colframe=stat221Blue!60!black},
+  },
+  stat221panelblue/.style={
+    stat221titlebox,
+    colback=stat221BlueLight,
+    colframe=stat221Blue!60!black,
+  },
+  stat221panelgray/.style={
+    stat221titlebox,
+    colback=stat221GrayLight,
+    colframe=stat221Blue!60!black,
+  },
+}
+
+\tcolorboxenvironment{definition}{stat221box,colback=stat221BlueLight,colframe=stat221Blue!60!black}
+\tcolorboxenvironment{example}{stat221box,colback=stat221GoldLight,colframe=stat221Gold!70!black}
+\tcolorboxenvironment{exercise}{stat221box,colback=stat221OrangeLight,colframe=stat221Orange!70!black}
+\tcolorboxenvironment{theorem}{stat221box,colback=stat221GrayLight,colframe=stat221Gray!70!black}
+\tcolorboxenvironment{lemma}{stat221box,colback=stat221GreenLight,colframe=stat221Green!60!black}
+\tcolorboxenvironment{proposition}{stat221box,colback=stat221PurpleLight,colframe=stat221Purple!60!black}
+\tcolorboxenvironment{corollary}{stat221box,colback=stat221TealLight,colframe=stat221Teal!60!black}
+\tcolorboxenvironment{remark}{stat221box,colback=white,colframe=stat221Gray!50!black}
+
+\renewcommand{\qedsymbol}{$\blacksquare$}
+
+% --- Macros ---
+\newcommand{\R}{\mathbb{R}}
+\newcommand{\C}{\mathbb{C}}
+\newcommand{\E}{\mathbb{E}}
+\newcommand{\1}{\mathbf{1}}
+
+\DeclareMathOperator*{\argmin}{arg\,min}
+\DeclareMathOperator*{\argmax}{arg\,max}
+
+\DeclarePairedDelimiter\norm{\lVert}{\rVert}
+\DeclarePairedDelimiter\ip{\langle}{\rangle}
+
+% A consistent Hessian notation (to avoid ambiguity with other uses of \nabla^2).
+\newcommand{\Hess}{\nabla^2}

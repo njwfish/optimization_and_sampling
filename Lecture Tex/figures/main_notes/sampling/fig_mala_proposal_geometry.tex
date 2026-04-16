@@ -1,0 +1,109 @@
+\begin{tikzpicture}[>=Stealth]
+  % Level sets of a correlated Gaussian (same parameterization as fig_gibbs_2d_geometry).
+  \def\a{0.810} % rho=0.95
+  \def\b{0.586} % rho=0.95
+
+  \begin{axis}[
+    name=rw,
+    width=0.46\linewidth,
+    height=5.8cm,
+    axis equal image,
+    xmin=-2.6, xmax=2.6,
+    ymin=-2.1, ymax=2.1,
+    axis lines=middle,
+    axis line style={stat221Gray!45,line width=0.6pt},
+    title={random-walk proposal},
+    title style={font=\scriptsize, text=stat221Gray, at={(axis description cs:0.5,1.04)}, anchor=south},
+    xlabel={},
+    ylabel={},
+    xtick=\empty,
+    ytick=\empty,
+    clip=false,
+  ]
+    \addplot[stat221Blue!55!black, line width=0.8pt, opacity=0.35, domain=0:360, samples=240]
+      ({2.0*(\a*cos(x)+\b*sin(x))},{2.0*(\b*cos(x)+\a*sin(x))});
+    \addplot[stat221Blue!55!black, line width=0.8pt, opacity=0.22, domain=0:360, samples=240]
+      ({1.2*(\a*cos(x)+\b*sin(x))},{1.2*(\b*cos(x)+\a*sin(x))});
+
+    \coordinate (xrw) at (axis cs:1.85,1.35);
+
+    \path[fill=stat221GrayLight, fill opacity=0.70] (xrw) circle[radius=0.62];
+    \draw[stat221Gray!70, line width=0.9pt, dashed] (xrw) circle[radius=0.62];
+
+    \addplot[
+      only marks,
+      mark=*,
+      mark size=2.8pt,
+      mark options={draw=white, line width=0.35pt, fill=stat221Purple},
+    ] coordinates {(1.85,1.35)};
+    \node[font=\scriptsize, anchor=south west, fill=white, inner sep=0.9pt] at (xrw) {$x$};
+
+    \node[font=\scriptsize, anchor=west, fill=white, inner sep=0.9pt] at (axis cs:2.42,0.12) {$x_1$};
+    \node[font=\scriptsize, anchor=south, fill=white, inner sep=0.9pt] at (axis cs:0.12,2.00) {$x_2$};
+  \end{axis}
+
+  \begin{axis}[
+    at={(rw.east)},
+    anchor=west,
+    xshift=0.08\linewidth,
+    name=lan,
+    width=0.46\linewidth,
+    height=5.8cm,
+    axis equal image,
+    xmin=-2.6, xmax=2.6,
+    ymin=-2.1, ymax=2.1,
+    axis lines=middle,
+    axis line style={stat221Gray!45,line width=0.6pt},
+    title={Langevin proposal},
+    title style={font=\scriptsize, text=stat221Teal, at={(axis description cs:0.5,1.04)}, anchor=south},
+    xlabel={},
+    ylabel={},
+    xtick=\empty,
+    ytick=\empty,
+    clip=false,
+  ]
+    \addplot[stat221Blue!55!black, line width=0.8pt, opacity=0.35, domain=0:360, samples=240]
+      ({2.0*(\a*cos(x)+\b*sin(x))},{2.0*(\b*cos(x)+\a*sin(x))});
+    \addplot[stat221Blue!55!black, line width=0.8pt, opacity=0.22, domain=0:360, samples=240]
+      ({1.2*(\a*cos(x)+\b*sin(x))},{1.2*(\b*cos(x)+\a*sin(x))});
+
+    \coordinate (xlan) at (axis cs:1.85,1.35);
+    \coordinate (mlan) at (axis cs:1.25,0.85);
+
+    \path[fill=stat221TealLight, fill opacity=0.70] (mlan) circle[radius=0.62];
+    \draw[stat221Teal, line width=1.0pt] (mlan) circle[radius=0.62];
+
+    \draw[->, stat221Red, line width=1.0pt] (xlan) -- (mlan)
+      ;
+
+    \addplot[
+      only marks,
+      mark=*,
+      mark size=2.8pt,
+      mark options={draw=white, line width=0.35pt, fill=stat221Purple},
+    ] coordinates {(1.85,1.35)};
+    \addplot[
+      only marks,
+      mark=*,
+      mark size=2.8pt,
+      mark options={draw=white, line width=0.35pt, fill=stat221Teal},
+    ] coordinates {(1.25,0.85)};
+
+    \node[
+      font=\scriptsize,
+      anchor=south west,
+      fill=white,
+      inner sep=0.9pt,
+    ] at (xlan) {$x$};
+    \node[
+      font=\scriptsize,
+      anchor=north west,
+      fill=white,
+      inner sep=0.9pt,
+      text=stat221Teal,
+    ] at (mlan) {$x-\epsilon\nabla U(x)$};
+
+    \node[font=\scriptsize, anchor=west, fill=white, inner sep=0.9pt] at (axis cs:2.42,0.12) {$x_1$};
+    \node[font=\scriptsize, anchor=south, fill=white, inner sep=0.9pt] at (axis cs:0.12,2.00) {$x_2$};
+  \end{axis}
+\end{tikzpicture}

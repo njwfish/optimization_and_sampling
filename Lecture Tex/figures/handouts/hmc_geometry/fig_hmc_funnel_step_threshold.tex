@@ -1,0 +1,83 @@
+\begin{tikzpicture}[>=Stealth,font=\footnotesize]
+  \tikzset{
+    thresholdPanel/.style={
+      rounded corners=5pt,
+      draw=stat221Gray!32,
+      fill=white,
+      line width=0.8pt,
+    },
+  }
+
+  \path[use as bounding box] (-0.15,-0.15) rectangle (13.35,5.10);
+  \draw[thresholdPanel,fill=white] (0,0) rectangle (13.20,4.92);
+
+  \node[font=\small\bfseries,text=stat221Gray!92,anchor=north west] at (0.42,4.62)
+    {Stable step-size threshold along the funnel axis};
+  \node[font=\scriptsize,text=stat221Gray!88,anchor=north west] at (0.42,4.24)
+    {centered threshold: $\epsilon_{\max}(v)=2e^{v/2}$ \qquad non-centered threshold: $\epsilon_{\max}=2$};
+
+  \begin{axis}[
+    at={(0.90,0.62)},
+    anchor=south west,
+    width=11.55cm,
+    height=3.10cm,
+    xmin=-6.2, xmax=2.2,
+    ymin=0, ymax=2.15,
+    axis lines=left,
+    axis line style={stat221Gray!60, line width=0.7pt},
+    xtick={-6,-4,-2,0,2},
+    ytick={0,0.1,0.5,1,2},
+    xlabel={funnel coordinate $v$},
+    ylabel={stable upper bound for $\epsilon$},
+    tick style={stat221Gray!60},
+    every axis label/.style={font=\scriptsize},
+    every tick label/.style={font=\scriptsize},
+    clip=false,
+  ]
+    \addplot[draw=none,fill=stat221OrangeLight] coordinates {(-6.2,0) (-4,0) (-4,2.15) (-6.2,2.15)} -- cycle;
+    \addplot[stat221Blue!82!black, very thick, domain=-6.0:2.0, samples=200] {2*exp(x/2)};
+    \addplot[stat221Green!72!black, very thick, domain=-6.0:2.0, samples=2] {2};
+
+    \addplot[only marks, mark=*, mark size=2.2pt, stat221Blue!82!black] coordinates {(-6,{2*exp(-3)}) (0,2)};
+    \addplot[only marks, mark=*, mark size=2.2pt, stat221Green!72!black] coordinates {(-6,2) (0,2)};
+
+    \draw[stat221Gray!45,dashed] (axis cs:-6,0) -- (axis cs:-6,{2*exp(-3)});
+    \draw[stat221Gray!45,dashed] (axis cs:0,0) -- (axis cs:0,2);
+
+    \node[
+      rounded corners=2pt,
+      fill=stat221OrangeLight,
+      inner sep=2.5pt,
+      font=\scriptsize,
+      text=stat221Orange!85!black,
+      anchor=south west
+    ] at (axis cs:-6.0,1.72) {throat};
+
+    \node[
+      rounded corners=2pt,
+      fill=stat221BlueLight,
+      inner sep=2.5pt,
+      font=\scriptsize,
+      text=stat221Blue!82!black,
+      anchor=south west
+    ] at (axis cs:-5.8,0.16) {centered: $\epsilon_{\max}(-6)\approx 0.10$};
+
+    \node[
+      rounded corners=2pt,
+      fill=stat221GreenLight,
+      inner sep=2.5pt,
+      font=\scriptsize,
+      text=stat221Green!55!black,
+      anchor=south
+    ] at (axis cs:-1.2,2.03) {non-centered: constant threshold};
+
+    \node[
+      rounded corners=2pt,
+      fill=white,
+      inner sep=2.5pt,
+      font=\scriptsize,
+      text=stat221Gray!92,
+      anchor=north east
+    ] at (axis cs:2.05,1.35) {centered throat cost grows exponentially};
+  \end{axis}
+\end{tikzpicture}

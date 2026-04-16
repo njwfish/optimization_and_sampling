@@ -1,0 +1,52 @@
+\begin{tikzpicture}[>=Stealth]
+  \begin{axis}[
+    width=0.46\linewidth,
+    height=5.1cm,
+    xmin=-6, xmax=5,
+    ymin=-25, ymax=25,
+    axis lines=left,
+    axis line style={stat221Gray!60,line width=0.7pt},
+    xtick={-6,-3,0,3},
+    ytick=\empty,
+    xlabel={$y$},
+    ylabel={$x$},
+    title={centered $(x,y)$},
+    title style={font=\footnotesize,yshift=-0.4em},
+    clip=false,
+  ]
+    % For x|y ~ N(0, exp(y)), the conditional standard deviation is exp(y/2).
+    % Solid: +/- 1 sd envelope. Dashed: +/- 2 sd envelope.
+    \addplot[stat221Blue!70!black, thick, domain=-6:5, samples=220] {exp(x/2)};
+    \addplot[stat221Blue!70!black, thick, domain=-6:5, samples=220] {-exp(x/2)};
+    \addplot[stat221Blue!55!black, dashed, domain=-6:5, samples=220] {2*exp(x/2)};
+    \addplot[stat221Blue!55!black, dashed, domain=-6:5, samples=220] {-2*exp(x/2)};
+
+    \node[stat221Gray, font=\footnotesize, anchor=west] at (axis cs:-5.7,4.0) {narrow neck};
+  \end{axis}
+
+  \begin{axis}[
+    at={(0.52\linewidth,0)},
+    anchor=south west,
+    width=0.46\linewidth,
+    height=5.1cm,
+    xmin=-6, xmax=5,
+    ymin=-3.2, ymax=3.2,
+    axis lines=left,
+    axis line style={stat221Gray!60,line width=0.7pt},
+    xtick={-6,-3,0,3},
+    ytick=\empty,
+    xlabel={$y$},
+    ylabel={$z$},
+    title={non-centered $(z,y)$},
+    title style={font=\footnotesize,yshift=-0.4em},
+    clip=false,
+  ]
+    % Under x = exp(y/2) z, we have z|y ~ N(0,1), so the conditional width is constant.
+    \addplot[stat221Teal!70!black, thick, domain=-6:5, samples=2] {1};
+    \addplot[stat221Teal!70!black, thick, domain=-6:5, samples=2] {-1};
+    \addplot[stat221Teal!55!black, dashed, domain=-6:5, samples=2] {2};
+    \addplot[stat221Teal!55!black, dashed, domain=-6:5, samples=2] {-2};
+
+    \node[stat221Gray, font=\footnotesize, anchor=west] at (axis cs:-5.7,2.5) {uniform width};
+  \end{axis}
+\end{tikzpicture}

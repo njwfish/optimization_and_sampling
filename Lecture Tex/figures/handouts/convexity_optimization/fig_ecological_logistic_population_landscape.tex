@@ -1,0 +1,49 @@
+\begin{tikzpicture}
+  \pgfplotsset{table/search path={figures/handouts/convexity_optimization/,../../figures/handouts/convexity_optimization/,Lecture Tex/figures/handouts/convexity_optimization/}}
+
+  \begin{axis}[
+    width=0.88\linewidth,
+    height=6.6cm,
+    view={0}{90},
+    axis lines=left,
+    xlabel={$\beta_0$},
+    ylabel={$\beta_1$},
+    tick style={stat221Gray},
+    tick label style={font=\small},
+    label style={font=\small},
+    xmin=-1.0, xmax=3.5,
+    ymin=-2.0, ymax=2.0,
+    point meta min=-4,
+    point meta max=0.75,
+    colormap={stat221landscape}{
+      color=(stat221Purple)
+      color=(stat221Blue)
+      color=(stat221Teal)
+      color=(white)
+    },
+    colorbar,
+    colorbar style={
+      ylabel={$\log_{10}(F-\min F+\varepsilon)$},
+      width=0.32cm,
+      yticklabel style={font=\small},
+      ylabel style={font=\small},
+      tick style={stat221Gray},
+    },
+  ]
+    \addplot3[
+      surf,
+      shader=interp,
+      mesh/rows=81,
+      draw=none,
+    ]
+    table [x=beta0, y=beta1, z=loggap] {data_ecological_logistic_population_landscape.dat};
+
+    % True parameter beta^*.
+    \addplot3[only marks,mark=x,mark size=4.2,very thick,color=white] coordinates {(0.3,1.2,0.75)};
+    \addplot3[only marks,mark=x,mark size=3.6,very thick,color=stat221Red] coordinates {(0.3,1.2,0.75)};
+
+    % A few spurious local minima (approximate locations; shown as open circles).
+    \addplot3[only marks,mark=o,mark size=4.0,very thick,color=white,fill=none] coordinates {(2.2,-1.05,0.75) (2.5,-1.15,0.75) (2.7,-1.25,0.75)};
+    \addplot3[only marks,mark=o,mark size=3.4,very thick,color=stat221Gray,fill=none] coordinates {(2.2,-1.05,0.75) (2.5,-1.15,0.75) (2.7,-1.25,0.75)};
+  \end{axis}
+\end{tikzpicture}

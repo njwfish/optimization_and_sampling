@@ -1,0 +1,150 @@
+If we know a smoothness constant $M$ in advance, we can choose a constant step size without a line search.
+Consider the update
+\begin{equation}
+  x^{(k+1)} = x^{(k)} - t\,\nabla f(x^{(k)}),
+  \qquad t>0.
+  \label{eq:gd-constant-stepsize}
+\end{equation}
+
+\begin{theorem}[Sublinear convergence for smooth convex objectives]
+\label{thm:gd-sublinear}
+Assume $f$ is convex and $M$-smooth, and let $x^\star \in \argmin f$.
+If we run \eqref{eq:gd-constant-stepsize} with step size $t=1/M$, then for every $k\ge 1$,
+\begin{equation}
+  f(x^{(k)}) - f(x^\star) \le \frac{M}{2k}\norm{x^{(0)}-x^\star}_2^2.
+  \label{eq:gd-sublinear}
+\end{equation}
+\end{theorem}
+\begin{proof}
+Write $x_k=x^{(k)}$ and $g_k=\nabla f(x_k)$.
+By the smoothness upper bound in \cref{thm:quadratic-bounds} with $y=x_k-tg_k$,
+\[
+  f(x_{k+1})
+  \le f(x_k) - t\norm{g_k}_2^2 + \frac{Mt^2}{2}\norm{g_k}_2^2
+  = f(x_k) - \Bigl(t-\frac{Mt^2}{2}\Bigr)\norm{g_k}_2^2.
+\]
+With $t=1/M$ this becomes
+\begin{equation}
+  f(x_k)-f(x_{k+1}) \ge \frac{1}{2M}\norm{g_k}_2^2.
+  \label{eq:gd-one-step-decrease}
+\end{equation}
+
+Next expand the squared distance to $x^\star$:
+\[
+  \norm{x_{k+1}-x^\star}_2^2
+  = \norm{x_k-x^\star}_2^2 - 2t\,g_k^\top(x_k-x^\star) + t^2\norm{g_k}_2^2.
+\]
+By convexity, $g_k^\top(x_k-x^\star)\ge f(x_k)-f(x^\star)$.
+Also \eqref{eq:gd-one-step-decrease} implies $t^2\norm{g_k}_2^2 \le 2t\,(f(x_k)-f(x_{k+1}))$.
+Combine these two bounds to get
+\[
+  \norm{x_{k+1}-x^\star}_2^2
+  \le \norm{x_k-x^\star}_2^2 - 2t\,(f(x_k)-f(x^\star)) + 2t\,(f(x_k)-f(x_{k+1}))
+  = \norm{x_k-x^\star}_2^2 - 2t\,(f(x_{k+1})-f(x^\star)).
+\]
+Rearranging,
+\[
+  f(x_{k+1})-f(x^\star)
+  \le \frac{1}{2t}\Bigl(\norm{x_k-x^\star}_2^2 - \norm{x_{k+1}-x^\star}_2^2\Bigr).
+\]
+Sum from $k=0$ to $K-1$ to obtain
+\[
+  \sum_{k=0}^{K-1}\bigl(f(x_{k+1})-f(x^\star)\bigr)
+  \le \frac{1}{2t}\norm{x_0-x^\star}_2^2.
+\]
+Finally, \eqref{eq:gd-one-step-decrease} implies $f(x_{k+1})\le f(x_k)$, so
+\[
+  K\bigl(f(x_K)-f(x^\star)\bigr)
+  \le \sum_{k=0}^{K-1}\bigl(f(x_{k+1})-f(x^\star)\bigr)
+  \le \frac{1}{2t}\norm{x_0-x^\star}_2^2.
+\]
+With $t=1/M$ this yields \eqref{eq:gd-sublinear}.
+\end{proof}
+
+The rate \eqref{eq:gd-sublinear} is \emph{sublinear} in $k$: to drive the suboptimality below $\varepsilon$ we need $k=O(1/\varepsilon)$ iterations.
+
+\begin{corollary}[Linear convergence under strong convexity with a fixed step size]
+\label{cor:gd-fixed-linear}
+If, in addition, $f$ is $m$-strongly convex, then with step size $t=1/M$,
+\begin{equation}
+  f(x^{(k)})-f(x^\star)
+  \le \left(1-\frac{m}{M}\right)^k\bigl(f(x^{(0)})-f(x^\star)\bigr).
+  \label{eq:gd-fixed-linear}
+\end{equation}
+\end{corollary}
+\begin{proof}
+With $t=1/M$, \eqref{eq:gd-one-step-decrease} gives
+\[
+  f(x_{k+1}) \le f(x_k) - \frac{1}{2M}\norm{\nabla f(x_k)}_2^2.
+\]
+By \cref{cor:sc-links}(b), $\norm{\nabla f(x_k)}_2^2 \ge 2m(f(x_k)-f(x^\star))$.
+Combine and rearrange to get
+\[
+  f(x_{k+1})-f(x^\star) \le \left(1-\frac{m}{M}\right)\bigl(f(x_k)-f(x^\star)\bigr),
+\]
+then iterate.
+\end{proof}
+
+Geometric rates of the form $c^k$ are often referred to as \emph{linear convergence} (since $\log(f(x^{(k)})-f(x^\star))$ decays roughly linearly in $k$).
+
+For general smooth strongly convex objectives, the bound in \cref{cor:gd-fixed-linear} already shows a geometric rate.
+For quadratics we can compute the rate exactly via eigenvalues, and in particular identify the optimal constant step size and its dependence on the condition number.
+
+\begin{proposition}[Gradient descent on a strongly convex quadratic]
+\label{prop:gd-quadratic}
+Let $A\in\R^{d\times d}$ be symmetric positive definite with eigenvalues in $[m,M]$, and let
+\[
+f(x)=\frac12 x^\top A x - b^\top x.
+\]
+Run gradient descent with a constant step size $t>0$,
+\[
+x_{k+1}=x_k - t\nabla f(x_k)=x_k - t(Ax_k-b).
+\]
+Then $x^\star=A^{-1}b$ and the error $e_k\coloneqq x_k-x^\star$ satisfies
+\[
+e_{k+1}=(I-tA)e_k,
+\qquad
+e_k=(I-tA)^k e_0.
+\]
+Moreover, if $0<t<2/M$ then
+\[
+\norm{e_k}_2 \le \rho(t)^k \norm{e_0}_2,
+\qquad
+\rho(t) \coloneqq \max\{|1-tm|,|1-tM|\}\in(0,1),
+\]
+and the function gap contracts as
+\[
+f(x_k)-f(x^\star)=\frac12\norm{e_k}_A^2 \le \frac{M}{2}\rho(t)^{2k}\norm{e_0}_2^2.
+\]
+The choice $t^\star=\frac{2}{m+M}$ minimizes $\rho(t)$, yielding
+\[
+\rho(t^\star)=\frac{M-m}{M+m} = \frac{\kappa-1}{\kappa+1},
+\qquad \kappa\coloneqq M/m.
+\]
+\end{proposition}
+\begin{proof}
+Since $\nabla f(x)=Ax-b$ and $x^\star=A^{-1}b$, we have
+\[
+e_{k+1}=x_{k+1}-x^\star = x_k-x^\star - t(Ax_k-b) = e_k - tAe_k = (I-tA)e_k,
+\]
+and iterating gives $e_k=(I-tA)^k e_0$.
+
+Diagonalize $A=Q\Lambda Q^\top$ with $Q$ orthogonal and $\Lambda=\mathrm{diag}(\lambda_1,\dots,\lambda_d)$.
+Then $I-tA = Q(I-t\Lambda)Q^\top$, so
+\[
+\norm{e_k}_2 = \norm{(I-tA)^k e_0}_2
+\le \norm{(I-tA)^k}_2\,\norm{e_0}_2
+= \max_i |1-t\lambda_i|^k \norm{e_0}_2.
+\]
+The map $\lambda\mapsto |1-t\lambda|$ is convex, so its maximum over $\lambda\in[m,M]$ occurs at an endpoint, giving
+$\max_i |1-t\lambda_i| = \max\{|1-tm|,|1-tM|\} = \rho(t)$.
+If $0<t<2/M$ then $|1-t\lambda_i|<1$ for every $\lambda_i\in[m,M]$, hence $\rho(t)\in(0,1)$.
+
+Finally, completing the square gives
+$f(x)-f(x^\star)=\frac12 (x-x^\star)^\top A (x-x^\star)=\frac12\norm{e}_A^2$,
+and since $A\preceq MI$ we have $\norm{e}_A^2 \le M\norm{e}_2^2$.
+The minimizer of $\rho(t)=\max\{|1-tm|,|1-tM|\}$ occurs when the two absolute values are equal, i.e.\ when $1-tm=-(1-tM)$.
+This gives $t^\star=2/(m+M)$ and $\rho(t^\star)=(M-m)/(M+m)$.
+\end{proof}
+
+When $M$ is unknown (or too conservative), a line search such as backtracking is a robust way to pick step sizes automatically; we analyze this next.

@@ -1,0 +1,391 @@
+\subsection{Expectation--maximization (EM)}
+\label{subsec:expectation-maximization}
+
+Many statistical models are easiest to describe by introducing a latent or missing variable.
+This is the probabilistic version of augmentation: the auxiliary variable $z$ makes the complete-data model simple even though the observed-data likelihood is harder.
+Suppose the observed data are $x$, the latent data are $z$, and the model is specified by a joint density or mass function $p_\theta(x,z)$.
+If $z$ were observed, then we could often optimize the complete-data model directly.
+The difficulty is that maximum likelihood depends on the marginalized quantity
+\[
+  p_\theta(x) = \int p_\theta(x,z)\,dz,
+  \qquad
+  \ell(\theta;x) \coloneqq \log p_\theta(x),
+\]
+with the integral replaced by a sum when $z$ is discrete.
+The awkward step is that the logarithm sits outside the integral, so even a simple complete-data model can lead to a difficult observed-data optimization problem.
+EM replaces this direct maximization by alternating two simpler steps.
+With the current iterate \(\theta^{(t)}\), the E-step computes the current conditional law
+\[
+  q_t(z)\coloneqq p_{\theta^{(t)}}(z\mid x),
+\]
+and the M-step maximizes the averaged complete-data log-likelihood
+\[
+  Q(\theta\mid \theta^{(t)})
+  \coloneqq
+  \E_{Z\sim q_t}\!\left[\log p_\theta(x,Z)\right].
+\]
+Later in the section we will rewrite this same alternation as coordinate ascent on a free-energy functional, which is the bridge to variational inference.
+Classical examples include Gaussian mixture models, hidden Markov models, and Gaussian models with missing data.
+
+\subsubsection{Free energy, the \texorpdfstring{$Q$}{Q}-function, and coordinate ascent}
+\label{subsubsec:em-q-function}
+
+Let $\theta^{(t)}$ be the current iterate and define the current posterior law of the latent variable by
+\[
+  q_t(z) \coloneqq p_{\theta^{(t)}}(z\mid x).
+\]
+The associated EM surrogate is
+\begin{equation}
+  Q(\theta\mid \theta^{(t)})
+  \coloneqq
+  \E\bigl[\log p_\theta(x,Z)\mid X=x,\theta^{(t)}\bigr]
+  =
+  \int \log p_\theta(x,z)\,q_t(z)\,dz.
+  \label{eq:em-q-function}
+\end{equation}
+The E-step computes the conditional law $q_t$, and the M-step maximizes the surrogate \eqref{eq:em-q-function} with respect to $\theta$.
+$Q(\theta\mid \theta^{(t)})$ averages the complete-data log-likelihood under the current belief about the missing data, so the M-step often reduces to a familiar weighted maximum-likelihood problem.
+The E-step updates the auxiliary latent law, and the M-step optimizes with that law held fixed.
+
+\begin{algorithm}
+  \caption{Expectation--maximization (EM)}
+  \label{alg:em}
+  \begin{algorithmic}[1]
+    \Require Observed data $x$, joint model $p_\theta(x,z)$, initial guess $\theta^{(0)}$, stopping tolerance $\varepsilon$
+    \Ensure Approximate maximizer of the observed-data log-likelihood
+    \For{$t=0,1,2,\dots$}
+      \State \textbf{E-step:} compute the conditional law $q_t(z)=p_{\theta^{(t)}}(z\mid x)$
+      \State Form $Q(\theta\mid \theta^{(t)}) = \E_{Z\sim q_t}\!\left[\log p_\theta(x,Z)\right]$
+      \State \textbf{M-step:} choose $\theta^{(t+1)} \in \argmax_{\theta} Q(\theta\mid \theta^{(t)})$
+      \If{$\norm{\theta^{(t+1)}-\theta^{(t)}}_2 \le \varepsilon$}
+        \State \Return $\theta^{(t+1)}$
+      \EndIf
+    \EndFor
+  \end{algorithmic}
+\end{algorithm}
+
+The M-step does not have to be solved exactly to preserve the usual ascent property.
+Any update that increases $Q(\theta\mid \theta^{(t)})$ is called a \emph{generalized EM} step.
+This generalized form is standard in the modern EM literature; see, for example, \citet[\S2.1]{balakrishnan_wainwright_yu_2014_em}.
+\Cref{eq:em-q-function} is the operational form of the same free-energy problem introduced above, because
+\begin{equation}
+  \mathcal{F}(q,\theta)
+  \coloneqq
+  \E_q[\log p_\theta(x,Z)] + H(q)
+  =
+  \int q(z)\log \frac{p_\theta(x,z)}{q(z)}\,dz.
+  \label{eq:em-free-energy}
+\end{equation}
+EM is exact coordinate ascent on this joint objective.
+
+\begin{proposition}[EM as coordinate ascent on free energy]
+\label{prop:em-free-energy-coordinate-ascent}
+For any density $q$ supported where $p_\theta(x,z)>0$,
+\begin{equation}
+  \ell(\theta;x)
+  =
+  \mathcal{F}(q,\theta)
+  +
+  \operatorname{KL}\!\bigl(q(z)\,\|\,p_\theta(z\mid x)\bigr).
+  \label{eq:em-free-energy-identity}
+\end{equation}
+Consequently:
+\begin{enumerate}[leftmargin=*]
+  \item for fixed $\theta$, the unique maximizer of $\mathcal{F}(q,\theta)$ over all densities $q$ is the exact posterior $p_\theta(z\mid x)$;
+  \item exact EM alternates the exact $q$-update
+  \[
+    q^{(t+1)}(z)=p_{\theta^{(t)}}(z\mid x)
+  \]
+  with the exact $\theta$-update
+  \[
+    \theta^{(t+1)}\in\argmax_\theta \mathcal{F}(q^{(t+1)},\theta);
+  \]
+  \item if $q$ is restricted to a tractable family $\mathcal{Q}$, then maximizing $\mathcal{F}(q,\theta)$ over $q\in\mathcal{Q}$ and $\theta$ is precisely the variational-inference relaxation of EM.
+\end{enumerate}
+\end{proposition}
+\begin{proof}
+Starting from Bayes' rule,
+\[
+  p_\theta(z\mid x)=\frac{p_\theta(x,z)}{p_\theta(x)}.
+\]
+Substituting this identity into the definition of KL divergence gives
+\[
+  \operatorname{KL}\!\bigl(q(z)\,\|\,p_\theta(z\mid x)\bigr)
+  =
+  \int q(z)\log \frac{q(z)\,p_\theta(x)}{p_\theta(x,z)}\,dz.
+\]
+Rearranging yields \eqref{eq:em-free-energy-identity}.
+For fixed $\theta$, the term \(\ell(\theta;x)\) is constant in \(q\), so maximizing \(\mathcal{F}(q,\theta)\) is equivalent to minimizing the KL divergence to the exact posterior.
+That proves the first claim.
+
+For the second claim, the exact $q$-update is just the maximizer from the first part.
+Once $q^{(t+1)}$ is fixed, the entropy term $H(q^{(t+1)})$ is constant in $\theta$, so maximizing $\mathcal{F}(q^{(t+1)},\theta)$ over $\theta$ is equivalent to maximizing
+\[
+  \E_{q^{(t+1)}}[\log p_\theta(x,Z)]
+  =
+  Q(\theta\mid \theta^{(t)}),
+\]
+which is exactly the M-step.
+The third claim is the same statement with the $q$-optimization restricted from all densities to the smaller family $\mathcal{Q}$.
+\end{proof}
+
+\begin{proposition}[EM monotonicity]
+\label{prop:em-monotonicity}
+Let $\ell(\theta;x)=\log p_\theta(x)$ and let $q_t(z)=p_{\theta^{(t)}}(z\mid x)$.
+If $\theta^{(t+1)}$ satisfies
+\[
+  Q(\theta^{(t+1)}\mid \theta^{(t)}) \ge Q(\theta^{(t)}\mid \theta^{(t)}),
+\]
+then
+\[
+  \ell(\theta^{(t+1)};x) \ge \ell(\theta^{(t)};x).
+\]
+In particular, exact EM does not decrease the observed-data log-likelihood.
+\end{proposition}
+\begin{proof}
+For any $\theta$,
+\[
+  \ell(\theta;x)
+  =
+  \log \int q_t(z)\,\frac{p_\theta(x,z)}{q_t(z)}\,dz.
+\]
+Applying Jensen's inequality to the concave logarithm gives
+\[
+  \ell(\theta;x)
+  \ge
+  \int q_t(z)\log \frac{p_\theta(x,z)}{q_t(z)}\,dz
+  =
+  Q(\theta\mid \theta^{(t)}) - \int q_t(z)\log q_t(z)\,dz.
+\]
+The second term does not depend on $\theta$.
+Moreover, when $\theta=\theta^{(t)}$, Bayes' rule gives
+\[
+  \frac{p_{\theta^{(t)}}(x,z)}{q_t(z)}
+  =
+  \frac{p_{\theta^{(t)}}(x,z)}{p_{\theta^{(t)}}(z\mid x)}
+  =
+  p_{\theta^{(t)}}(x),
+\]
+which is constant in $z$, so Jensen's inequality is tight at $\theta^{(t)}$.
+Therefore
+\[
+  \ell(\theta^{(t+1)};x) - \ell(\theta^{(t)};x)
+  \ge
+  Q(\theta^{(t+1)}\mid \theta^{(t)}) - Q(\theta^{(t)}\mid \theta^{(t)})
+  \ge 0.
+\]
+\end{proof}
+
+This proposition explains why EM is often described as a monotone ascent method.
+It is important, however, not to over-interpret the result:
+monotonicity guarantees improvement in likelihood, but it does \emph{not} guarantee convergence to the global maximizer.
+Observed-data likelihoods for latent-variable models are usually nonconcave, so EM should be viewed as a local refinement method.
+
+\subsubsection{Worked example: a two-coin mixture}
+\label{subsubsec:em-two-coins}
+
+Suppose coin $A$ lands heads with probability $\theta_A$ and coin $B$ lands heads with probability $\theta_B$.
+For each experiment $i=1,\dots,N$:
+\begin{enumerate}[leftmargin=*]
+  \item choose coin $A$ with probability $\pi$ and coin $B$ with probability $1-\pi$,
+  \item toss the chosen coin $m$ times,
+  \item record only the number of heads $X_i\in\{0,1,\dots,m\}$.
+\end{enumerate}
+The latent variable is
+\[
+  Z_i \in \{A,B\},
+\]
+which records which coin was used in experiment $i$.
+Conditional on $Z_i=A$, we have $X_i\sim \operatorname{Bin}(m,\theta_A)$, and conditional on $Z_i=B$, we have $X_i\sim \operatorname{Bin}(m,\theta_B)$.
+
+If the labels $Z_1,\dots,Z_N$ were observed, estimation would be straightforward.
+Indeed, the complete-data likelihood is
+\begin{align}
+  p(x,z\mid \pi,\theta_A,\theta_B)
+  =
+  \prod_{i=1}^N
+  &\Bigl[
+    \pi \binom{m}{x_i}\theta_A^{x_i}(1-\theta_A)^{m-x_i}
+  \Bigr]^{\1\{z_i=A\}}
+  \nonumber\\
+  &\times
+  \Bigl[
+    (1-\pi)\binom{m}{x_i}\theta_B^{x_i}(1-\theta_B)^{m-x_i}
+  \Bigr]^{\1\{z_i=B\}}.
+  \label{eq:em-two-coins-complete}
+\end{align}
+The corresponding complete-data log-likelihood is
+\begin{align}
+  \log p(x,z\mid \pi,\theta_A,\theta_B)
+  =
+  \sum_{i=1}^N
+  \Bigl[
+    &\1\{z_i=A\}\bigl(\log \pi + x_i\log \theta_A + (m-x_i)\log(1-\theta_A)\bigr)
+    \nonumber\\
+    +
+    &\1\{z_i=B\}\bigl(\log(1-\pi) + x_i\log \theta_B + (m-x_i)\log(1-\theta_B)\bigr)
+    \nonumber\\
+    +
+    &\log \binom{m}{x_i}
+  \Bigr].
+  \label{eq:em-two-coins-complete-loglik}
+\end{align}
+If the indicators were known, maximizing \eqref{eq:em-two-coins-complete-loglik} would just mean taking the empirical fraction of experiments assigned to each coin and the empirical fraction of heads within each coin.
+
+The observed-data likelihood is harder because we must sum over the unknown labels:
+\begin{equation}
+  p(x\mid \pi,\theta_A,\theta_B)
+  =
+  \prod_{i=1}^N
+  \left[
+    \pi \binom{m}{x_i}\theta_A^{x_i}(1-\theta_A)^{m-x_i}
+    +
+    (1-\pi)\binom{m}{x_i}\theta_B^{x_i}(1-\theta_B)^{m-x_i}
+  \right].
+  \label{eq:em-two-coins-observed-likelihood}
+\end{equation}
+Taking a logarithm turns the product into a sum, but each summand still contains a logarithm of a \emph{sum}, so direct maximization is awkward.
+
+Given current estimates $(\pi^{(t)},\theta_A^{(t)},\theta_B^{(t)})$, the E-step computes the posterior probability that experiment $i$ used coin $A$:
+\begin{equation}
+  \gamma_{i,A}^{(t)}
+  \coloneqq
+  \Pr(Z_i=A\mid X_i=x_i,\pi^{(t)},\theta_A^{(t)},\theta_B^{(t)})
+  =
+  \frac{
+    \pi^{(t)} (\theta_A^{(t)})^{x_i}(1-\theta_A^{(t)})^{m-x_i}
+  }{
+    \pi^{(t)} (\theta_A^{(t)})^{x_i}(1-\theta_A^{(t)})^{m-x_i}
+    +
+    (1-\pi^{(t)}) (\theta_B^{(t)})^{x_i}(1-\theta_B^{(t)})^{m-x_i}
+  }.
+  \label{eq:em-two-coins-responsibility}
+\end{equation}
+The binomial coefficient cancels in the ratio, so only the relative plausibility of the two coins matters.
+We also write
+\[
+  \gamma_{i,B}^{(t)} \coloneqq 1-\gamma_{i,A}^{(t)}.
+\]
+
+Using these posterior weights in \eqref{eq:em-two-coins-complete-loglik} yields the surrogate
+\begin{align}
+  Q(\pi,\theta_A,\theta_B \mid \pi^{(t)},\theta_A^{(t)},\theta_B^{(t)})
+  =
+  \sum_{i=1}^N
+  \Bigl[
+    &\gamma_{i,A}^{(t)}\bigl(\log \pi + x_i\log \theta_A + (m-x_i)\log(1-\theta_A)\bigr)
+    \nonumber\\
+    +
+    &\gamma_{i,B}^{(t)}\bigl(\log(1-\pi) + x_i\log \theta_B + (m-x_i)\log(1-\theta_B)\bigr)
+  \Bigr]
+  + \text{const},
+  \label{eq:em-two-coins-q}
+\end{align}
+where the constant term does not depend on $(\pi,\theta_A,\theta_B)$.
+
+The M-step maximizes \eqref{eq:em-two-coins-q}.
+Because the parameters separate, the maximizers are available in closed form:
+\begin{equation}
+  \pi^{(t+1)} = \frac{1}{N}\sum_{i=1}^N \gamma_{i,A}^{(t)},
+  \label{eq:em-two-coins-pi-update}
+\end{equation}
+\begin{equation}
+  \theta_A^{(t+1)}
+  =
+  \frac{\sum_{i=1}^N \gamma_{i,A}^{(t)} x_i}{m\sum_{i=1}^N \gamma_{i,A}^{(t)}},
+  \qquad
+  \theta_B^{(t+1)}
+  =
+  \frac{\sum_{i=1}^N \gamma_{i,B}^{(t)} x_i}{m\sum_{i=1}^N \gamma_{i,B}^{(t)}}.
+  \label{eq:em-two-coins-theta-update}
+\end{equation}
+These formulas have a simple interpretation:
+EM replaces the unknown label of each experiment by a \emph{soft assignment}.
+The updated coin-bias estimates are therefore just weighted fractions of heads, and the updated mixing weight is the average posterior probability of using coin $A$.
+In the language of clustering, the E-step softly separates the experiments into ``coin $A$-like'' and ``coin $B$-like'' groups, and the M-step re-fits the two coins to those soft groups.
+
+\subsubsection{Stable responsibilities and regularized updates}
+\label{subsubsec:em-stability}
+
+The algebra of the E-step is simple, but the computation can still become unstable when some latent states are much less plausible than others.
+The general log-scale normalization rule from \Cref{subsec:stable-evaluation} is therefore part of the standard EM toolkit.
+If a model has latent states $k=1,\dots,K$, one first forms log responsibilities
+\[
+  \ell_{ik}
+  \coloneqq
+  \log \pi_k + \log p(x_i\mid z_i=k,\theta_k),
+\]
+then normalizes them by subtracting a common scale before exponentiating:
+\[
+  r_{ik}
+  =
+  \exp\!\left(
+    \ell_{ik} - \operatorname{LSE}(\ell_{i1},\dots,\ell_{iK})
+  \right).
+\]
+Equivalently, one may subtract $\max_k \ell_{ik}$ first and normalize the resulting exponentials.
+Both calculations preserve the same mathematical answer, but the log-scale version avoids underflow when one component is exponentially less plausible than another.
+
+In models with covariance or precision updates, the M-step raises a second issue.
+Weighted empirical covariance matrices can be unstable when a latent state receives very little effective mass, and the resulting estimate may be nearly singular even though the population problem is well posed.
+A small covariance floor, diagonal loading term, or other mild regularization then plays the same role as damping in Newton's method: it preserves positive definiteness and prevents the next E-step from being driven by spurious tiny eigenvalues; see \Cref{subsec:geometry-control}.
+This does not change the basic EM logic; it keeps the geometry of the update trustworthy while the effective sample size assigned to a component is still small.
+
+Initialization remains the third computational safeguard.
+Because EM is a local method, multiple dispersed starts are often as important as any single numerical trick.
+They separate two different failure modes: unstable local arithmetic inside a run, and convergence to different basins across runs.
+These same log-scale and geometry-control ideas reappear in more complicated latent-variable procedures, including hidden-state models and mixture models, where repeated normalization and covariance estimation are unavoidable.
+
+\subsubsection{Initialization, local maxima, and the bridge to VI}
+\label{subsubsec:em-local-behavior}
+
+The two-coin example highlights why EM is different from a hard-imputation procedure.
+One could try to replace each unobserved $Z_i$ by its most likely value under the current parameter and then maximize the complete-data likelihood.
+That approach throws away uncertainty, especially for observations that are compatible with either latent state.
+EM keeps this uncertainty in the E-step by averaging over the full conditional law \(p_{\theta^{(t)}}(z\mid x)\).
+
+At the same time, EM remains a local method.
+The likelihood ascent property from \cref{prop:em-monotonicity} says that EM moves uphill, but it does not say \emph{which} hill the algorithm will climb.
+For latent-variable models with multiple basins of attraction, different initial conditions can lead to different fixed points or different local maxima.
+Practitioners therefore frequently run EM from several dispersed initializations and retain the run with the largest final likelihood.
+
+\begin{figure}[t]
+  \centering
+  \input{figures/main_notes/augmented_state_optimization/fig_em_operator_fixed_points}
+  \caption{A one-dimensional population EM map for a symmetric Gaussian mixture.
+  The fixed points are the intersections with the diagonal; the filled points are stable and the open point at the origin is unstable.
+  The cobweb paths, shown here from the common initialization $\theta^{(0)}=0.2$, show how the limiting point depends on the initialization.
+  Weaker separation (left) leaves the local slope near the stable fixed point around $0.56$, so refinement is slower; stronger separation (right) drives that slope down to about $0.02$, producing much sharper local contraction.
+  This basin picture is why EM is best understood as a local refinement method rather than a globally convergent optimizer.}
+  \label{fig:em-operator-fixed-points}
+\end{figure}
+
+The two panels of \Cref{fig:em-operator-fixed-points} sharpen two central intuitions.
+First, EM is basin-based: the initialization determines which stable fixed point the iterates approach.
+Second, once EM is inside the right basin, the local slope of the map controls the speed of refinement.
+When the latent classes are weakly separated, the map lies closer to the diagonal near the target and convergence is slower; when the classes are better separated, the map bends more sharply and the iterates lock in much faster.
+For Gaussian mixtures, these basin and contraction phenomena are formalized in both local and global analyses: \citet[Cor.~1--2]{balakrishnan_wainwright_yu_2014_em} prove local contractivity inside a basin around the truth, while \citet[Thm.~1]{daskalakis_tzamos_zampetakis_2016_ten_steps_em} and \citet[Thms.~3--4]{xu_hsu_maleki_2016_global_em} analyze the fixed-point geometry and broader convergence picture.
+
+There is also a useful comparison with Gibbs sampling and with the coordinate-ascent variational updates that appear later in the course.
+All three methods exploit latent-variable structure by alternating conditional updates, but they use those conditionals differently:
+\[
+  \text{Gibbs: sample } z \sim p_\theta(z\mid x), \qquad
+  \text{EM: set } q(z)=p_\theta(z\mid x) \text{ and maximize in } \theta,
+\]
+\[
+  \text{CAVI: update } q_j(z_j) \propto \exp\!\bigl(\E_{q_{-j}}[\log p_\theta(x,z)]\bigr)
+  \text{ inside a restricted family.}
+\]
+Gibbs alternates conditional sampling, EM alternates exact conditional expectation and maximization, and CAVI keeps the same free-energy logic while restricting the latent law to a tractable family.
+This is another instance of the augmented-state viewpoint used throughout this unit: introducing extra probabilistic structure can make it possible to explore or optimize a landscape in ways that purely local deterministic updates cannot.
+
+The important conceptual handoff is that EM and VI optimize the same free-energy identity.
+Exact EM uses the unrestricted update
+\[
+  q^{(t+1)}(z)=p_{\theta^{(t)}}(z\mid x),
+\]
+whereas variational inference keeps the model $p_\theta(x,z)$ fixed and replaces that exact posterior by the best approximation inside a tractable family $\mathcal{Q}$:
+\[
+  q^{(t+1)} \in \argmax_{q\in\mathcal{Q}} \mathcal{F}(q,\theta^{(t)}).
+\]
+The next unit adopts this $(x,z,\theta)$ notation throughout and rewrites the same free-energy objective as the evidence lower bound in \Cref{subsec:vi-elbo}.

@@ -1,0 +1,62 @@
+\begin{tikzpicture}[>=Stealth,font=\small]
+  % A divide-and-conquer tree for composing affine maps (scan / parallel prefix).
+  \tikzset{
+    leaf/.style={
+      rectangle,
+      rounded corners=2.0pt,
+      draw=stat221Blue!60!black,
+      fill=stat221BlueLight,
+      line width=0.8pt,
+      minimum width=12mm,
+      minimum height=7.2mm,
+      inner sep=1.6pt,
+      font=\small,
+    },
+    node/.style={
+      rectangle,
+      rounded corners=2.0pt,
+      draw=stat221Teal!60!black,
+      fill=stat221TealLight,
+      line width=0.8pt,
+      minimum width=16mm,
+      minimum height=7.2mm,
+      inner sep=1.6pt,
+      font=\small,
+    },
+    edge/.style={stat221Gray!65,line width=0.8pt},
+  }
+
+  % Leaves: affine maps \varphi_1,...,\varphi_8.
+  \foreach \i in {1,...,8} {
+    \node[leaf] (p\i) at ({(\i-1)*1.40},0) {$\varphi_{\i}$};
+  }
+
+  % Level 1: pairwise compositions.
+  \node[node] (p12) at (0.70,1.25) {$\varphi_{1:2}$};
+  \node[node] (p34) at (3.50,1.25) {$\varphi_{3:4}$};
+  \node[node] (p56) at (6.30,1.25) {$\varphi_{5:6}$};
+  \node[node] (p78) at (9.10,1.25) {$\varphi_{7:8}$};
+
+  \draw[edge] (p1.north) -- (p12.south);
+  \draw[edge] (p2.north) -- (p12.south);
+  \draw[edge] (p3.north) -- (p34.south);
+  \draw[edge] (p4.north) -- (p34.south);
+  \draw[edge] (p5.north) -- (p56.south);
+  \draw[edge] (p6.north) -- (p56.south);
+  \draw[edge] (p7.north) -- (p78.south);
+  \draw[edge] (p8.north) -- (p78.south);
+
+  % Level 2: compositions of length 4.
+  \node[node] (p14) at (2.10,2.60) {$\varphi_{1:4}$};
+  \node[node] (p58) at (7.70,2.60) {$\varphi_{5:8}$};
+
+  \draw[edge] (p12.north) -- (p14.south);
+  \draw[edge] (p34.north) -- (p14.south);
+  \draw[edge] (p56.north) -- (p58.south);
+  \draw[edge] (p78.north) -- (p58.south);
+
+  % Level 3: full composition.
+  \node[node] (p18) at (4.90,3.95) {$\varphi_{1:8}$};
+  \draw[edge] (p14.north) -- (p18.south);
+  \draw[edge] (p58.north) -- (p18.south);
+\end{tikzpicture}

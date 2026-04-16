@@ -1,0 +1,184 @@
+\subsection{The No-U-Turn Sampler}
+\label{subsec:nuts}
+
+One of the hardest parts of tuning HMC is choosing the trajectory length.
+The No-U-Turn Sampler (NUTS) of \citet[\S3.1]{hoffman_gelman_2014_nuts} automates this choice.
+Its basic idea is simple: keep extending the HMC trajectory while it is still making productive forward progress, and stop once further integration would mostly retrace the same region.
+The step size $\epsilon$ can still be tuned from acceptance behavior, but NUTS replaces the hand-chosen leapfrog count $L$ with a geometric stopping rule.
+In a nearly elliptical geometry that rule tries to run long enough to cross the orbit without circling back and undoing earlier movement.
+
+\begin{figure}[H]
+  \centering
+  \input{figures/main_notes/augmented_state_sampling/fig_nuts_uturn}
+  \caption{A schematic of the NUTS stopping idea.
+  While the secant vector $\Delta x$ and the velocity $M^{-1}p$ point in roughly the same direction, extending the trajectory is still productive.
+  Once their inner product becomes negative, the trajectory is turning back toward where it came from and further leapfrog steps are likely to waste computation.}
+  \label{fig:nuts-uturn}
+\end{figure}
+
+\subsubsection{The U-turn stopping criterion}
+\label{subsubsec:nuts-uturn}
+
+Suppose an exact Hamiltonian trajectory starts at $x_0$ and reaches $x_t$ with momentum $p_t$.
+If we write $\Delta x_t \coloneqq x_t-x_0$, then the squared distance from the starting point changes according to
+\begin{equation}
+  \frac{d}{dt}\,\frac{1}{2}\norm{x_t-x_0}^2
+  =
+  \ip{x_t-x_0}{\dot x_t}
+  =
+  \ip{x_t-x_0}{M^{-1}p_t}.
+  \label{eq:nuts-distance-derivative}
+\end{equation}
+Equation \eqref{eq:nuts-distance-derivative} is the key geometric diagnostic.
+As long as it is positive, the trajectory is still moving away from its starting point.
+When the derivative becomes negative, the trajectory has begun to turn back.
+On an elliptical orbit this is exactly the moment at which continuing the simulation starts to undo previous movement rather than discovering new regions of the typical set.
+
+This observation gives the core stopping idea: once the trajectory begins to turn back, additional leapfrog steps are no longer buying new exploration.
+The probabilistic difficulty is that we cannot simply stop at the first realized U-turn and keep that endpoint, because the stopping rule itself depends on the realized path.
+The remaining construction packages this geometric stopping idea into a symmetric HMC transition.
+
+\subsubsection{Symmetric tree expansion and candidate selection}
+\label{subsubsec:nuts-tree}
+
+NUTS implements that stopping idea with two pieces of machinery.
+First, a slice variable excludes states with excessively large energy.
+Second, a doubling construction grows a symmetric set of candidate states around the current point instead of privileging a single realized endpoint.
+
+The slice variable
+\begin{equation}
+  u \sim \mathrm{Unif}\!\left(0,e^{-H(x_0,p_0)}\right),
+  \label{eq:nuts-slice}
+\end{equation}
+where $(x_0,p_0)$ is the current phase-space state after momentum refreshment.
+Only states satisfying
+\[
+  e^{-H(x,p)} \ge u
+\]
+are eligible candidates for the next draw.
+This slice restriction prevents obviously poor numerical states from entering the candidate set and makes the correctness argument symmetric.
+
+Starting from the current state, NUTS builds a balanced binary tree by repeatedly choosing a direction $v_j\in\{-1,+1\}$ and integrating $2^j$ leapfrog steps of size $v_j\epsilon$ at depth $j$.
+At every stage it maintains left and right endpoints $(x^-,p^-)$ and $(x^+,p^+)$, along with the candidate states encountered so far that satisfy the slice condition.
+Concretely, depth \(0\) adds one leapfrog step to one side of the current state.
+If no stop is triggered, depth \(1\) appends a fresh subtree of length \(2\), then depth \(2\) appends one of length \(4\), and so on, so the explored path length doubles at each successful stage.
+The tree is therefore just a bookkeeping device for this recursive concatenation.
+One can think of each subtree as carrying a small summary: its left and right endpoints, the number of slice-admissible states inside it, and a flag saying whether a U-turn or divergence has already appeared.
+Those summaries are enough to keep the construction symmetric between forward and backward time without privileging the order in which individual leapfrog states were generated.
+This bookkeeping also explains candidate selection.
+After a valid subtree has been grown, NUTS does not simply keep the newest endpoint.
+Instead it merges the old and new subtrees and updates the candidate by sampling from the union with probability proportional to the number of slice-admissible states contributed by each side.
+That recursive size-weighted merge is how implementations reproduce the uniform law on the admissible candidate set without explicitly storing every visited point in a long trajectory.
+
+Tree expansion stops as soon as one of two things happens.
+The first is a divergence, meaning the energy error has become too large for the numerical trajectory to be trusted.
+The second is an endpoint version of the U-turn condition:
+\begin{equation}
+  \ip{x^+ - x^-}{M^{-1}p^-} < 0
+  \qquad\text{or}\qquad
+  \ip{x^+ - x^-}{M^{-1}p^+} < 0.
+  \label{eq:nuts-endpoint-criterion}
+\end{equation}
+The secant $x^+-x^-$ summarizes the currently explored trajectory segment, and the two endpoint momenta check whether either end is now pointing back across that segment.
+When \eqref{eq:nuts-endpoint-criterion} holds, further doubling would mostly revisit the same region rather than extend exploration.
+\Cref{fig:nuts-tree-growth} illustrates the doubling logic schematically.
+There is also no separate Metropolis accept/reject step at the end of this construction.
+Energy fluctuations are handled indirectly by the slice restriction and by terminating the expansion when a divergence is detected, after which the next state is drawn from the admissible set already built inside the slice.
+
+\begin{figure}[H]
+  \centering
+  \input{figures/main_notes/augmented_state_sampling/fig_nuts_tree_growth}
+  \caption{A schematic NUTS tree grown along an HMC trajectory.
+  Each doubling adds a new half-tree of leapfrog states, increasing the explored path length exponentially until a U-turn or a divergence stops the expansion.}
+  \label{fig:nuts-tree-growth}
+\end{figure}
+
+\begin{algorithm}[H]
+  \caption{High-level NUTS iteration}
+  \label{alg:nuts}
+  \begin{algorithmic}[1]
+    \Require Current state $x^{(t)}$, mass matrix $M$, step size $\epsilon$, maximum tree depth $J_{\max}$
+    \State Draw $p_0 \sim \mathcal{N}(0,M)$ and $u \sim \mathrm{Unif}\!\left(0,e^{-H(x^{(t)},p_0)}\right)$.
+    \State Initialize left and right endpoints at $(x^{(t)},p_0)$ and candidate set $\mathcal{C}\gets\{(x^{(t)},p_0)\}$.
+    \For{$j=0,1,\dots,J_{\max}$}
+      \State Choose a direction $v_j\in\{-1,+1\}$.
+      \State Extend the corresponding endpoint by $2^j$ leapfrog steps of size $v_j\epsilon$.
+      \State Add any new states satisfying the slice condition $e^{-H(x,p)}\ge u$ to $\mathcal{C}$.
+      \If{a divergence occurs or the endpoint criterion \eqref{eq:nuts-endpoint-criterion} holds}
+        \State \textbf{break}
+      \EndIf
+    \EndFor
+    \State Sample the next state $x^{(t+1)}$ using the candidate-selection rule that preserves the uniform law on admissible candidates in $\mathcal{C}$.
+\end{algorithmic}
+\end{algorithm}
+
+The original algorithm samples uniformly from the admissible candidate set inside the slice.
+Modern implementations often use a closely related multinomial sampling rule that weights states by $e^{-H(x,p)}$ instead of enforcing the slice variable explicitly.
+The implementation details differ, but their role is the same: turn the geometric rule ``stop when the trajectory starts to retrace'' into a valid symmetric transition kernel.
+The maximum tree depth \(J_{\max}\) is only a computational cap on this doubling procedure.
+Hitting that cap means the sampler would have kept exploring if allowed; it does not indicate a correctness failure, only that the implementation has limited the longest admissible trajectory for cost reasons.
+
+\subsubsection{Why the transition is still valid}
+\label{subsubsec:nuts-correctness}
+
+The key point is that NUTS is \emph{not} ``run HMC until the first U-turn and keep the endpoint.''
+That naive rule would privilege one realized stopping point and would generally break the symmetry needed for detailed balance.
+Instead, NUTS uses the slice variable and the doubling tree to construct a candidate set that contains the current state, excludes obviously bad high-energy states, and is built in a way that is symmetric between forward and backward integration; this is the core construction in \citet[\S\S3.1.1--3.1.2]{hoffman_gelman_2014_nuts}.
+
+Once that symmetric candidate set has been built, the next state is drawn by a transition rule that leaves the uniform distribution on the admissible candidates invariant.
+In the simplified presentation that means sampling uniformly from the slice-restricted set.
+In the efficient implementation it means using subtree sizes to reproduce the same uniform law without storing every visited state explicitly.
+The correctness mechanism is therefore easy to summarize even though the implementation details are intricate:
+NUTS preserves HMC's reversible geometry by replacing a single path-dependent endpoint with a symmetric set of admissible states and then sampling from that set with a reversible rule.
+
+\subsubsection{Warm-up and practical tuning}
+\label{subsubsec:nuts-warmup}
+
+In practice NUTS is almost always paired with automatic adaptation of the step size and mass matrix during warm-up.
+Warm-up has two jobs: choose a step size that gives stable, high-acceptance trajectories, and estimate a mass matrix that matches the scale of the target.
+The original NUTS paper uses dual averaging on $\log\epsilon$ to target a chosen average acceptance statistic $\delta$; see \citet[\S3.2, p.~1608]{hoffman_gelman_2014_nuts}.
+In the optimization language of \cref{subsubsec:dual-averaging}, the quantity being updated is now the scalar tuning parameter $\log\epsilon$ rather than the model parameter itself, and the role of the noisy gradient is played by the acceptance error.
+If $\alpha_j$ denotes the acceptance statistic from warm-up iteration $j$, one defines $H_j\coloneqq \delta-\alpha_j$ and updates
+\[
+  \bar H_j
+  =
+  \left(1-\frac{1}{j+t_0}\right)\bar H_{j-1}
+  +
+  \frac{1}{j+t_0}H_j,
+  \qquad
+  \log \epsilon_j
+  =
+  \mu - \frac{\sqrt{j}}{\gamma}\bar H_j,
+\]
+for a baseline value $\mu$, then forms the smoothed average
+\[
+  \log \bar\epsilon_j
+  =
+  j^{-\kappa}\log\epsilon_j
+  +
+  \bigl(1-j^{-\kappa}\bigr)\log \bar\epsilon_{j-1}.
+\]
+The first recursion aggregates acceptance errors, while the second maps that accumulated dual signal back to the primal tuning variable $\log\epsilon$.
+The step-size recursion is therefore also called \emph{Nesterov's primal-dual averaging}: it maintains an aggregated dual error signal and maps it back to a primal tuning variable.
+It is therefore distinct from Nesterov's accelerated gradient, which updates the model parameter by a look-ahead gradient step.
+The commonly used defaults from that construction are $\gamma=0.05$, $t_0=10$, and $\kappa=0.75$.
+
+Warm-up is staged because the two tuning problems live on different time scales.
+The step size reacts quickly: after a short run it is already clear whether trajectories are numerically stable and whether the acceptance statistic is near the target.
+The mass matrix is slower because it requires a covariance estimate from a window of warm-up draws that is long enough to say something reliable about scale.
+
+A typical workflow therefore has three phases.
+One starts with \(M=I\) (or a simple diagonal guess) and tunes only \(\epsilon\) until trajectories are numerically stable and the average acceptance statistic is in a sensible range.
+Then come the slower covariance windows: warm-up draws are accumulated, a new estimate of \(M^{-1}\) is formed, and the step-size adaptation is restarted because the geometry has just changed.
+This middle stage is repeated with longer windows until the metric estimate stops moving enough to matter.
+Only then does one freeze \(M\) and do a final short retuning pass for \(\epsilon\) with the geometry held fixed.
+This is the practical meaning of the staged warm-up used in modern NUTS implementations: fast adaptation for stability, slower windowed adaptation for geometry, then fast retuning once the geometry has been fixed.
+The common summary is therefore ``fast-slow-fast'': short early adaptation for \(\epsilon\), long middle windows for \(M\), then a short final cleanup pass for \(\epsilon\) with \(M\) fixed.
+
+As in HMC, the geometric rationale for the metric comes from \Cref{subsec:geometry-control}; the sampler-specific point is that a better metric makes the no-U-turn rule act on a trajectory whose numerical scale is already better balanced across directions.
+Because the covariance estimates are noisy, practical implementations use windowed updates, diagonal approximations, or mild shrinkage and ridge regularization before freezing the metric.
+Once warm-up is finished, the tuning parameters are frozen and standard post-warm-up diagnostics such as $\hat R$, effective sample size, trace plots, and divergence counts become the relevant checks; see \Cref{subsec:mcmc-diagnostics}.
+
+From a practical point of view, NUTS removes the most fragile hand-tuned HMC parameter.
+After warm-up, the user no longer chooses $L$ directly: the realized trajectory length is whatever the no-U-turn logic allows before retracing begins.
+Modern probabilistic programming systems therefore often expose NUTS, rather than plain fixed-$L$ HMC, as the default general-purpose gradient-based sampler.

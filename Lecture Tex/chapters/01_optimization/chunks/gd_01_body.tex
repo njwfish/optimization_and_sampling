@@ -1,0 +1,109 @@
+Much of modern statistics and machine learning can be phrased as choosing a parameter vector $x\in\R^d$ to minimize an objective:
+\begin{equation}
+  \min_{x \in \R^d} f(x),
+  \label{eq:unconstrained-min}
+\end{equation}
+This unconstrained problem is the core primitive behind many later constructions: penalties, constraints, stochastic approximations, and even some sampling algorithms are all variations on it.
+Many statistical procedures reduce to minimizing a loss plus regularization; see \citet[\S9.1]{boyd_vandenberghe_2004_convex}.
+
+Local analysis begins with a concrete question: if we perturb the current point $x$ in direction $v$, what is the first-order change in $f$?
+The differential $Df(x)[v]$ answers exactly that question, and it is linear in the direction $v$.
+That linearity is what makes the gradient useful: one vector can summarize all directional slopes at once.
+In Euclidean coordinates every linear functional on $\R^d$ can be written uniquely in the form
+\[
+  v \mapsto \ip{a,v}
+  \qquad\text{for some } a\in\R^d \text{ and all } v\in\R^d,
+\]
+so we represent first-order information by a vector.
+For a differentiable function $f$, the gradient is defined by the identity
+\[
+  Df(x)[v]=\ip{\nabla f(x),v}
+  \qquad\text{for all } v\in\R^d.
+\]
+Thus the gradient is not an extra construction; it is simply the Euclidean way of writing the linear approximation of the objective.
+For example, if $f(x)=a^\top x$ then $\nabla f(x)=a$, while for $f(x)=\frac12\norm{x}_2^2$ we have $\nabla f(x)=x$.
+For now we stay in the unconstrained setting and develop the derivative calculus itself.
+The multiplier language belongs to constrained optimization, where the new issue is feasibility rather than local change in $f$.
+In convex optimization this first-order information becomes especially powerful because the local model controls the function globally.
+
+We will use regularized logistic regression as a running example throughout the optimization chapter.
+It is simple enough to differentiate explicitly, but rich enough to show how curvature, conditioning, and regularization interact.
+
+\begin{example}[Logistic regression (with ridge regularization)]
+\label{ex:logistic-reg}
+Let data $(x_i,y_i)_{i=1}^n$ satisfy $x_i \in \R^d$ and $y_i \in \{0,1\}$.
+In logistic regression we model
+\begin{equation}
+  y_i \mid x_i \sim \mathrm{Bernoulli}(p_i(\theta)),
+  \qquad
+  p_i(\theta) = \sigma(x_i^\top \theta)
+  = \frac{1}{1+e^{-x_i^\top \theta}}.
+  \label{eq:logistic-model}
+\end{equation}
+The log-likelihood is
+\begin{align}
+  \ell(\theta)
+  &= \log p(y_1,\dots,y_n \mid x_1,\dots,x_n,\theta) \nonumber \\
+  &= \sum_{i=1}^n \Bigl[y_i x_i^\top \theta - \log\bigl(1+e^{x_i^\top \theta}\bigr)\Bigr].
+  \label{eq:logistic-loglik}
+\end{align}
+Equivalently, the (convex) negative log-likelihood is
+\begin{equation}
+  L(\theta) = -\ell(\theta)
+  = \sum_{i=1}^n \Bigl[\log\bigl(1+e^{x_i^\top \theta}\bigr) - y_i x_i^\top \theta\Bigr].
+  \label{eq:logistic-nll}
+\end{equation}
+A common regularized objective (ridge) is
+\begin{equation}
+  s(\theta) = L(\theta) + \frac{m}{2}\norm{\theta}_2^2,
+  \qquad m>0.
+  \label{eq:logistic-ridge-objective}
+\end{equation}
+\end{example}
+
+The objective \eqref{eq:logistic-ridge-objective} is a clean example of a smooth convex optimization problem with a finite-sum structure (a sum over data points).
+It also lets us see, explicitly, how curvature and conditioning depend on the data matrix $X$ and on regularization.
+
+\begin{lemma}[Gradient and Hessian for logistic regression]
+\label{lem:logistic-grad-hess}
+Let $X \in \R^{n \times d}$ have rows $x_i^\top$, and let $p(\theta) \in \R^n$ have entries $p_i(\theta)=\sigma(x_i^\top\theta)$.
+Then
+\begin{equation}
+  \nabla L(\theta) = X^\top \bigl(p(\theta) - y\bigr),
+  \qquad
+  \Hess L(\theta) = X^\top W(\theta) X,
+  \label{eq:logistic-grad-hess}
+\end{equation}
+where $W(\theta) = \mathrm{diag}(p_i(\theta)(1-p_i(\theta)))$.
+Moreover, since $0 < p(1-p) \le 1/4$ for all $p \in (0,1)$,
+\begin{equation}
+  0 \preceq W(\theta) \preceq \tfrac14 I
+  \quad\Rightarrow\quad
+  0 \preceq X^\top W(\theta) X \preceq \tfrac14 X^\top X.
+  \label{eq:logistic-hess-bound}
+\end{equation}
+For the ridge objective $s(\theta)=L(\theta)+\tfrac{m}{2}\norm{\theta}_2^2$,
+\begin{equation}
+  \Hess s(\theta) = X^\top W(\theta) X + m I.
+  \label{eq:logistic-ridge-hess}
+\end{equation}
+\end{lemma}
+\begin{proof}
+Write $z_i(\theta)=x_i^\top\theta$.
+The derivative of $\log(1+e^{z})$ is $\frac{e^z}{1+e^z}=\sigma(z)$, so differentiating \eqref{eq:logistic-nll} gives
+\[
+\nabla L(\theta)
+= \sum_{i=1}^n \bigl(\sigma(z_i(\theta)) - y_i\bigr)x_i
+= X^\top(p(\theta)-y).
+\]
+Since $\sigma'(z)=\sigma(z)(1-\sigma(z))$, another derivative yields
+\[
+\Hess L(\theta)=\sum_{i=1}^n p_i(\theta)(1-p_i(\theta))\,x_i x_i^\top = X^\top W(\theta)X.
+\]
+The bound $p(1-p)\le 1/4$ is maximized at $p=1/2$, which gives \eqref{eq:logistic-hess-bound}.
+Finally, $\Hess\left(\tfrac{m}{2}\norm{\theta}_2^2\right)=mI$, so \eqref{eq:logistic-ridge-hess} follows by additivity.
+\end{proof}
+
+The Hessian for logistic regression is a weighted Gram matrix $X^\top W X$.
+When a datum is ``confident'' (i.e., $p_i(\theta)$ close to $0$ or $1$), its weight $p_i(1-p_i)$ is small, so it contributes little curvature; the maximum curvature occurs near the decision boundary ($p_i \approx 1/2$).
+Adding ridge regularization shifts all eigenvalues up by $m$, which improves conditioning and helps algorithms like gradient descent and Newton's method behave more predictably.

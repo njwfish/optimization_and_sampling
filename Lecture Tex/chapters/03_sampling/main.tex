@@ -1,0 +1,11 @@
+\section{Sampling}
+\label{sec:sampling}
+
+Sampling asks for expectations under a target law \(\pi\), not just one good point.
+Exact independent sampling is often unavailable, so the problem is to design estimators and transition mechanisms that still approximate those expectations reliably.
+Stable probability calculations, proposal geometry, and gradient information remain central throughout, whether the method is i.i.d.\ Monte Carlo or MCMC.
+The recurring objects are the target law \(\pi\), proposal objects \(q\), and transition kernels \(K\).
+
+\input{chapters/03_sampling/monte_carlo}
+\input{chapters/03_sampling/mcmc_theory}
+\input{chapters/04_markov_chain_monte_carlo/main}

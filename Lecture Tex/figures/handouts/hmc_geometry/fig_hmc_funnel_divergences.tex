@@ -1,0 +1,93 @@
+\begin{tikzpicture}[>=Stealth,font=\footnotesize]
+  \tikzset{
+    funnelPanel/.style={
+      rounded corners=5pt,
+      draw=stat221Gray!32,
+      fill=white,
+      line width=0.8pt,
+    },
+    funnelTitle/.style={
+      font=\footnotesize\bfseries,
+      text=stat221Gray!92,
+      align=center,
+      text width=5.45cm,
+    },
+    funnelBadge/.style={
+      rounded corners=2.5pt,
+      inner sep=2.5pt,
+      font=\scriptsize,
+    },
+  }
+
+  \path[use as bounding box] (-0.15,-0.15) rectangle (13.35,5.10);
+
+  % --- Left panel: centered funnel with localized divergences ---
+  \draw[funnelPanel,fill=stat221OrangeLight!72!white] (0,0) rectangle (6.42,4.88);
+  \node[funnelTitle] at (3.21,4.36) {Centered funnel\\divergences localize in the throat};
+
+  \begin{scope}[shift={(3.05,2.22)},x=0.52cm,y=0.38cm]
+    \draw[->,stat221Gray!65,line width=0.55pt] (-4.9,-3.0) -- (4.2,-3.0);
+    \draw[->,stat221Gray!65,line width=0.55pt] (-4.8,-2.9) -- (-4.8,3.0);
+    \node[font=\scriptsize,text=stat221Gray!90,anchor=north] at (-0.6,-3.18) {$v$};
+    \node[font=\scriptsize,text=stat221Gray!90,anchor=south] at (-4.8,3.06) {$x$};
+
+    \draw[stat221Blue!82!black,line width=1.15pt,samples=140,domain=-4.6:2.0,smooth]
+      plot (\x,{1.55*exp(\x/2)});
+    \draw[stat221Blue!82!black,line width=1.15pt,samples=140,domain=-4.6:2.0,smooth]
+      plot (\x,{-1.55*exp(\x/2)});
+
+    \draw[stat221Green!72!black,line width=1.40pt,line join=round]
+      plot coordinates {(-0.2,1.55) (-0.9,1.16) (-1.8,0.70) (-2.7,0.34) (-3.5,0.10)};
+    \draw[stat221Green!72!black,line width=1.40pt,line join=round]
+      plot coordinates {(0.3,-1.45) (-0.6,-1.00) (-1.6,-0.58) (-2.7,-0.26) (-3.6,-0.06)};
+
+    \draw[stat221Red!82!black,line width=1.0pt] (-3.35,0.32) ++(-0.10,-0.10) -- ++(0.20,0.20);
+    \draw[stat221Red!82!black,line width=1.0pt] (-3.35,0.32) ++(-0.10,0.10) -- ++(0.20,-0.20);
+    \draw[stat221Red!82!black,line width=1.0pt] (-3.15,-0.34) ++(-0.10,-0.10) -- ++(0.20,0.20);
+    \draw[stat221Red!82!black,line width=1.0pt] (-3.15,-0.34) ++(-0.10,0.10) -- ++(0.20,-0.20);
+    \draw[stat221Red!82!black,line width=1.0pt] (-2.95,0.05) ++(-0.10,-0.10) -- ++(0.20,0.20);
+    \draw[stat221Red!82!black,line width=1.0pt] (-2.95,0.05) ++(-0.10,0.10) -- ++(0.20,-0.20);
+
+    \node[
+      funnelBadge,
+      fill=white,
+      text=stat221Red!82!black,
+      anchor=west
+    ] at (-4.0,2.10) {curvature spikes as $v$ decreases};
+
+    \node[
+      funnelBadge,
+      fill=white,
+      text=stat221Gray!92,
+      anchor=west
+    ] at (-4.0,-2.55) {$\partial^2 U/\partial x^2=e^{-v}$};
+  \end{scope}
+
+  % --- Right panel: non-centered repair ---
+  \draw[funnelPanel,fill=stat221GreenLight!86!white] (6.88,0) rectangle (13.30,4.88);
+  \node[funnelTitle] at (10.09,4.36) {Non-centered coordinates\\remove the narrow throat};
+
+  \begin{scope}[shift={(9.68,2.18)},x=0.58cm,y=0.46cm]
+    \draw[->,stat221Gray!65,line width=0.55pt] (-4.9,-2.0) -- (4.2,-2.0);
+    \draw[->,stat221Gray!65,line width=0.55pt] (-4.8,-1.9) -- (-4.8,2.1);
+    \node[font=\scriptsize,text=stat221Gray!90,anchor=north] at (-0.6,-2.14) {$v$};
+    \node[font=\scriptsize,text=stat221Gray!90,anchor=south] at (-4.8,2.16) {$\eta$};
+
+    \draw[stat221Green!72!black,line width=1.15pt] (-4.6,1.15) -- (3.9,1.15);
+    \draw[stat221Green!72!black,line width=1.15pt] (-4.6,-1.15) -- (3.9,-1.15);
+
+    \draw[stat221Blue!82!black,line width=1.35pt,line join=round]
+      plot coordinates {(-4.1,0.70) (-2.7,0.38) (-1.2,0.02) (0.4,-0.34) (1.8,-0.66) (3.0,-0.92)};
+    \draw[stat221Blue!82!black,line width=1.35pt,line join=round]
+      plot coordinates {(-3.9,-0.64) (-2.4,-0.32) (-0.8,0.02) (0.8,0.34) (2.1,0.62) (3.1,0.88)};
+    \draw[stat221Blue!82!black,line width=1.35pt,line join=round]
+      plot coordinates {(-4.2,0.12) (-2.6,0.02) (-0.9,-0.06) (0.8,-0.04) (2.2,0.05) (3.3,0.12)};
+
+    \node[
+      funnelBadge,
+      fill=white,
+      text=stat221Green!55!black,
+      anchor=west
+    ] at (-4.15,1.42) {constant conditional width};
+  \end{scope}
+\end{tikzpicture}

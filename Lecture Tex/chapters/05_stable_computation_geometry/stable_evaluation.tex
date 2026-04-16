@@ -1,0 +1,118 @@
+\subsubsection{Working on the log scale}
+\label{subsec:stable-evaluation}
+\label{subsubsec:working-on-log-scale}
+
+The Monte Carlo calculations above already expose the main numerical issue for sampling.
+In floating-point arithmetic there are only finitely many representable numbers, so the computer does not literally manipulate the real numbers that appear in the mathematics.
+Probabilities are often tiny, likelihood ratios can differ by many orders of magnitude, and a naive translation of the algebra into floating-point arithmetic can therefore overflow, underflow, or round away the smaller of two competing contributions entirely.
+The log-weight checks around \Cref{alg:importance-sampling} are the first example, and the same issue will return immediately in Markov-chain acceptance ratios and transformed target densities.
+Stable evaluation means rewriting the same mathematics so that the scale that matters for the algorithm remains visible to the machine.
+One repeatedly tries to cancel irrelevant common factors, keep intermediate quantities in a representable range, and avoid subtractions in which all significant digits are lost.
+In the sampling methods introduced so far, the algorithm usually needs a ratio, a normalization, a tail comparison, or a log normalizing constant rather than an absolute probability value.
+
+The first recurring move is to stay on the log scale whenever the algorithm only cares about relative probabilities.
+Whenever an objective or density is built from products of positive terms, the logarithm is usually the natural computational scale.
+Products become sums, ratios become differences, and a common multiplicative scale becomes an additive shift that can be removed without changing any normalized quantity.
+Suppose a calculation produces log weights $\ell_1,\dots,\ell_n$.
+The normalized weights are then
+\[
+  w_i = \frac{e^{\ell_i}}{\sum_{j=1}^n e^{\ell_j}},
+\]
+and the same normalizing sum also determines the log normalizing constant $\log \sum_{j=1}^n e^{\ell_j}$.
+Directly exponentiating the $\ell_i$ can be numerically disastrous: large positive values can overflow, while very negative values can underflow to zero before the ratios among the smaller terms are ever compared.
+Writing
+\[
+  a \coloneqq \max_i \ell_i
+\]
+and subtracting this common shift before exponentiating gives
+\begin{equation}
+  \log \sum_{i=1}^n e^{\ell_i}
+  =
+  a + \log \sum_{i=1}^n e^{\ell_i-a}.
+  \label{eq:log-sum-exp}
+\end{equation}
+This is the log-sum-exp identity.
+It simply factors out the largest scale $e^a$.
+After that shift, every exponent in \eqref{eq:log-sum-exp} is at most zero, so each exponential lies in $(0,1]$ and the sum is computed in a much safer floating-point range while preserving the relative sizes of the terms.
+
+The same shift gives normalized weights directly:
+\[
+  w_i
+  =
+  \frac{e^{\ell_i-a}}{\sum_{j=1}^n e^{\ell_j-a}}.
+\]
+If we want an average rather than a sum, then
+\[
+  \log \frac{1}{n}\sum_{i=1}^n e^{\ell_i}
+  =
+  -\log n + \log \sum_{i=1}^n e^{\ell_i},
+\]
+which is often called a log-mean-exp calculation.
+This pattern is what keeps self-normalized importance sampling stable when only a few draws dominate, and it is equally useful in latent-variable models where responsibilities must be renormalized at every iteration.
+If only relative weights matter, one should remove the largest common scale before asking floating-point arithmetic to exponentiate anything.
+In practice one usually stays on the log scale until the last step that genuinely requires ordinary probabilities.
+
+The same issue appears when a calculation ends with a probability close to $0$ or $1$.
+If a tail probability is so small that floating-point arithmetic rounds it to zero, then taking a logarithm afterwards loses all information.
+For that reason one often works directly with $\log F(x)$ or $\log(1-F(x))$, depending on whether the lower or upper tail is the quantity of interest.
+In statistics software these are usually exposed as log-CDF or log-survival evaluations.
+Here the stable object is the logarithm of the probability, not the probability itself.
+Similarly, if $F(x)$ is extremely close to $1$, then the subtraction $1-F(x)$ may round to zero before the logarithm is taken.
+Stable log-survival calculations avoid that dangerous subtraction rather than trying to repair it afterwards.
+More generally, subtracting two nearly equal floating-point numbers is a common source of lost precision, so algebraically equivalent forms that avoid such subtractions are usually preferable.
+
+This matters whenever the algorithm compares tail events rather than raw densities.
+Gaussian tail approximations, rejection envelopes, and likelihood-based tests can all fail in the far tails if the computation leaves the log scale too early.
+The same discipline also clarifies diagnostics: a histogram of log weights is often informative precisely because the logarithm turns multiplicative instability into additive spread that we can see and reason about.
+The same habit of carrying the dominant scale explicitly will reappear below when Metropolis--Hastings and Langevin-type samplers evaluate log targets and acceptance ratios.
+
+\subsubsection{Transformed densities and Jacobians}
+\label{subsubsec:transformed-densities}
+
+Often the numerically convenient coordinates are not the scientifically meaningful ones.
+We introduce an unconstrained variable \(z\), optimize or sample there, and map back to the original parameter by \(x=T(z)\).
+This is useful for positive parameters, simplex coordinates, and Cholesky factors, but it changes the density: once we change coordinates, a Jacobian term must be included to keep the target correct.
+The basic identity is the ordinary change-of-variables formula.
+If $x=T(z)$ is a smooth bijection, then
+\[
+  p_Z(z) = p_X\!\bigl(T(z)\bigr)\,\lvert \det J_T(z)\rvert.
+\]
+Taking logarithms gives
+\begin{equation}
+  \log p_Z(z)
+  =
+  \log p_X\!\bigl(T(z)\bigr)
+  +
+  \log \lvert \det J_T(z)\rvert.
+  \label{eq:transformed-density-log}
+\end{equation}
+Equation \eqref{eq:transformed-density-log} is therefore just the change-of-variables formula written on the log scale.
+The transformed log density is the original log density evaluated at the mapped point, plus an additive volume correction.
+This additive form is also the stable one computationally: multiplicative Jacobian factors can vary over many orders of magnitude, while on the log scale they enter as one more term in a sum.
+The computational and probabilistic issues coincide here.
+We change coordinates because the transformed variable $z$ may be easier to optimize over or sample in, but the Jacobian term is what makes that computational convenience represent the original model rather than a different one.
+
+For a positive scalar parameter, the basic example is $x=e^z$.
+Then \eqref{eq:transformed-density-log} becomes
+\[
+  \log p_Z(z) = \log p_X(e^z) + z.
+\]
+The exponential map keeps $x$ positive automatically, while the Jacobian term records how intervals on the $z$ scale stretch when mapped back to the original variable.
+The same pattern extends to vector transforms, simplex maps, and Cholesky parameterizations.
+Whenever we optimize or sample in transformed coordinates, carrying the Jacobian term on the log scale is what keeps the target mathematically correct and numerically stable.
+This becomes especially important in latent-variable models and in gradient-based samplers, where transformed coordinates are often the difference between a feasible computation and an impossible one.
+
+The same distinction matters after the computation is finished.
+If an optimizer or sampler is run on an unconstrained variable $z$ but the scientific parameter of interest is $x=T(z)$, then summaries should usually be formed on the $x$ scale by transforming the retained iterates first.
+For nonlinear maps, the order matters:
+\[
+  \E[T(Z)] \neq T(\E[Z])
+\]
+in general, and the same is true for credible intervals and other nonlinear summaries.
+One therefore stores the draws or iterates in the computational coordinates that make the algorithm stable, but reports means, intervals, and other interpretable quantities on the model scale that the transformation defines.
+
+Transformed objectives are also one of the most common places for implementation errors.
+If gradients are coded by hand, then a useful consistency check is to compare the analytic gradient of the log density or potential at a few representative points with a finite-difference derivative of that same scalar function.
+The finite-difference calculation is not meant to replace the final algorithm, and in high dimension it is far too expensive to use iteratively.
+Its role is narrower and more important: it catches missing Jacobian terms, sign mistakes, and other local errors before those errors are amplified by Newton updates, Langevin proposals, or leapfrog trajectories.
+These same ideas reappear whenever we sample in transformed coordinates and need the algorithmic convenience of the new parameterization to remain faithful to the original target.

@@ -1,0 +1,76 @@
+\begin{tikzpicture}[x=1.1cm,y=1.1cm,>=Stealth]
+  % Two-panel sketch of the geometric content of KKT stationarity.
+
+	  % --- (a) Smooth boundary, single active inequality ---
+	  \begin{scope}[shift={(0,0)}]
+	    \pgfmathsetmacro{\a}{2.35}
+	    \pgfmathsetmacro{\b}{1.55}
+
+    \coordinate (xstar) at (\a,0);
+    \coordinate (t1) at ($ (xstar) + (0,1.2) $);
+    \coordinate (t2) at ($ (xstar) + (0,-1.2) $);
+
+    % Feasible set.
+    \draw[fill=stat221GrayLight,draw=stat221Gray!65,line width=0.6pt] (0,0) ellipse ({\a} and {\b});
+    \node[stat221Gray!70] at (-1.55,1.1) {$C$};
+
+    % Tangent line at x^* (smooth boundary).
+    \draw[densely dashed,stat221Gray!70,line width=0.55pt] (t2) -- (t1);
+
+	    % Point x^*.
+	    \fill[black] (xstar) circle (1.45pt);
+	    \node[anchor=south east,font=\small,fill=white,fill opacity=0.9,text opacity=1,inner sep=1pt] at (xstar) {$x^\star$};
+
+	    % Single visual statement of stationarity: -∇f aligns with the outward normal ∇g.
+	    \draw[stat221Blue,thick,->] (xstar) -- ++(1.25,0)
+	      node[pos=0.62,anchor=south,font=\small,stat221Blue,fill=white,fill opacity=0.9,text opacity=1,inner sep=1pt]
+	      {$-\nabla f(x^\star)$};
+	    \draw[stat221Purple,thick,->] (xstar) -- ++(0.9,0)
+	      node[pos=0.62,anchor=north,font=\small,stat221Purple,fill=white,fill opacity=0.9,text opacity=1,inner sep=1pt]
+	      {$\lambda^\star\nabla g(x^\star)$};
+
+	    % Right-angle marker between the tangent and the normal direction.
+	    \pgfmathsetmacro{\s}{0.28}
+	    \coordinate (ra) at ($ (xstar) + (0,\s) $);
+	    \coordinate (rb) at ($ (xstar) + (-\s,0) $);
+	    \coordinate (rc) at ($ (xstar) + (-\s,\s) $);
+	    \draw[stat221Gray!75,line width=0.55pt] (ra) -- (rc) -- (rb);
+
+	    \node[anchor=north west,font=\small] at (-2.45,1.9) {(a)};
+	  \end{scope}
+
+  % --- (b) Corner, two active inequalities ---
+	  \begin{scope}[shift={(6.6,0)}]
+	    \pgfmathsetmacro{\R}{2.25}
+	    \pgfmathsetmacro{\Rc}{1.65}
+	    \coordinate (xstar) at (0,0);
+
+	    % Feasible set with a corner at x^* (intersection of two constraints): truncated by an arc.
+	    \path[fill=stat221GrayLight] (0,0) -- (\R,0) arc (0:90:\R) -- cycle;
+	    \draw[stat221Gray!65,line width=0.6pt] (0,0) -- (\R,0);
+	    \draw[stat221Gray!65,line width=0.6pt] (0,0) -- (0,\R);
+	    \draw[stat221Gray!35,line width=0.55pt] (\R,0) arc (0:90:\R);
+	    \node[stat221Gray!70] at (1.05,1.15) {$C$};
+
+    % Point x^*.
+    \fill[black] (xstar) circle (1.45pt);
+    \node[anchor=south east,font=\small,fill=white,fill opacity=0.9,text opacity=1,inner sep=1pt] at (xstar) {$x^\star$};
+
+		    % Shading for the set of nonnegative combinations of the active normals.
+		    \path[fill=stat221Purple!15] (0,0) -- (-\Rc,0) -- (0,-\Rc) -- cycle;
+		    \draw[stat221Purple!35,line width=0.45pt] (0,0) -- (-\Rc,0);
+		    \draw[stat221Purple!35,line width=0.45pt] (0,0) -- (0,-\Rc);
+
+	    % Active constraint gradients (outward normals) at the corner.
+	    \draw[stat221Purple,thick,->] (xstar) -- ++(-1.45,0)
+	      node[anchor=east,font=\small,stat221Purple,fill=white,fill opacity=0.9,text opacity=1,inner sep=1pt] {$\nabla g_1(x^\star)$};
+    \draw[stat221Purple,thick,->] (xstar) -- ++(0,-1.45)
+      node[anchor=north,font=\small,stat221Purple,fill=white,fill opacity=0.9,text opacity=1,inner sep=1pt] {$\nabla g_2(x^\star)$};
+
+	    % Stationarity: -∇f lies in the normal cone spanned by the active normals.
+	    \draw[stat221Blue,thick,->] (xstar) -- ++(-1.05,-0.85)
+	      node[anchor=north east,font=\small,stat221Blue,fill=white,fill opacity=0.9,text opacity=1,inner sep=1pt] {$-\nabla f(x^\star)$};
+
+    \node[anchor=north west,font=\small] at (-2.05,1.9) {(b)};
+  \end{scope}
+\end{tikzpicture}

@@ -1,0 +1,17 @@
+\section{Variational inference}
+\label{sec:variational-inference}
+
+Variational inference starts from a latent-variable model \(p_\theta(x,z)\) and the posterior \(p_\theta(z\mid x)\).
+The difficulty is the evidence
+\[
+  p_\theta(x)=\int p_\theta(x,z)\,dz,
+\]
+which makes exact posterior calculations intractable in many models.
+Variational inference chooses a tractable family \(q\) and turns posterior approximation into an optimization problem.
+This is the EM free-energy story with one crucial change: the exact posterior update is replaced by optimization over a restricted family.
+We first write the identity that makes this optimization precise, namely the ELBO.
+We then study factorized coordinate updates and finally move to stochastic and amortized settings, where inference itself is represented by a learned map \(q_\phi(z\mid x)\).
+
+\input{chapters/08_variational_inference/elbo}
+\input{chapters/08_variational_inference/mean_field_vi}
+\input{chapters/08_variational_inference/amortized_vi}

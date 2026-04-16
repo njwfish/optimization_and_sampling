@@ -1,0 +1,289 @@
+\subsection{Using the sampling toolkit with diffusion models}
+\label{subsec:diffusion-sampling-viewpoints}
+
+The previous subsection answered the model-building question.
+It identified the exact reverse kernels and showed how, in Euclidean models, the corresponding reverse-time quantities can be learned by regression.
+If those exact reverse kernels were available, then by \Cref{thm:distributional-posterior-learning,prop:reverse-kernels-transport-general} iterating them would transport \(p_1\) back to \(p_0\).
+Likewise, if the exact score \(s(t,x)=\nabla\log p_t(x)\) and velocity \(b(t,x)\) were known and the reverse dynamics from \Cref{prop:si-family-of-sdes} could be simulated accurately, then plain reverse simulation would already solve the unconditional sampling problem.
+
+That statement is theoretically important, but it does not settle the practical sampling question.
+It answers an idealized problem:
+how do we generate one unconditional sample from \(p_0\) if exact reverse-time quantities are available?
+In practice we work with learned approximations, finite time grids, and tasks that go beyond unconditional i.i.d.\ sampling.
+So once a reverse bridge is available, the question is no longer ``what is diffusion?'' but ``which sampling problem are we solving on top of that bridge?''
+
+No new sampling framework is needed.
+The earlier ideas from the course reappear with the same notation.
+Fix a decreasing grid \(1=t_K>\cdots>t_0=0\), and write
+\[
+  X_{t_{k-1}}^{\mathrm{prop}}
+  \sim
+  \hat K_{t_{k-1}\mid t_k}(\,\cdot\,\mid X_{t_k})
+\]
+for the approximate reverse kernel produced by a learned finite-step sampler such as \Cref{alg:bridge-sampling}.
+This is meant to approximate the exact reverse kernel \(K_{t_{k-1}\mid t_k}\), not the endpoint posterior \(q_{0\mid t_k}\).
+Accordingly, \(X_{t_{k-1}}^{\mathrm{prop}}\) is a proposal for the state at the earlier time \(t_{k-1}\), not a proposal for \(X_0\) unless \(k=1\).
+The decreasing-noise family \(\{p_t\}_{t\in[0,1]}\) plays the same structural role as the target ladder in \Cref{subsec:tempering}:
+instead of attacking the difficult endpoint law \(p_0\) in one step, the algorithm moves through a sequence of easier intermediate laws.
+Once such a bridge is on the table, modern diffusion samplers mostly modify one of three things: the proposal family, the target family, or the state space.
+We may want the same target law \(p_0\), but at lower computational cost.
+We may want a conditional target law \(p_0(\cdot\mid y)\) rather than the unconditional one.
+Or we may want a finite set of samples whose empirical distribution approximates the target law better than i.i.d.\ sampling would at the same budget.
+In the notation of the course, these are three different ways to modify the sampling problem:
+for efficient sampling, the target family \(\{p_t\}\) stays fixed and we redesign the proposal or add a local correction;
+for guidance, the target family changes from \(\{p_t\}\) to the conditional family
+\[
+  p_t^y(dx)\coloneqq p_t(dx\mid y);
+\]
+for finite-particle approximation, the state space changes from \(\R^d\) to the product space \((\R^d)^N\) and the target changes from the product law \((p_t^y)^{\otimes N}\) to a coupled law on that product space.
+More concretely, the first task points back to gradient-based MCMC in \Cref{subsubsec:langevin-diffusion,subsubsec:mala}, the second to conditioning by likelihood reweighting in \Cref{ex:conditioning-likelihood-reweighting} and sequential reweighting in \Cref{subsec:smc}, and the third to the empirical-measure viewpoint of particle methods in \Cref{subsubsec:smc-particles,subsubsec:smc-resampling}.
+
+\subsubsection{Efficient sampling for the same target law}
+\label{subsubsec:diffusion-efficient-sampling}
+
+The first task keeps the target law \(p_0\) fixed and asks for a cheaper sampler.
+Correctness is not the issue here; computation is.
+With a learned model, the practical endpoint error comes from both approximation error in the learned field and discretization error along the time grid.
+If controlling those errors requires a very fine grid, then reverse sampling becomes slow.
+Because each reverse step requires one or more evaluations of the learned score or drift network, the natural cost measure is the number of network function evaluations (NFEs).
+So ``more efficient sampling'' means lower endpoint error at a fixed NFE budget, or comparable endpoint error using fewer NFEs.
+
+The important point is that efficiency does not mean changing the target.
+We still want samples from the same law \(p_0\).
+We are only changing how we approximate the reverse path.
+This is exactly the distinction that appeared earlier in gradient-based MCMC:
+keep the target fixed, then redesign the proposal and, if useful, locally correct it.
+
+Two familiar levers now reappear.
+The first is to treat \(\hat K_{t_{k-1}\mid t_k}\) as a predictor and then follow it with a short correction targeted at the new time level.
+Formally, one replaces the bare proposal
+\[
+  X_{t_{k-1}}^{\mathrm{prop}}
+  \sim
+  \hat K_{t_{k-1}\mid t_k}(\,\cdot\,\mid X_{t_k})
+\]
+by the composite update
+\[
+  X_{t_{k-1}}
+  \sim
+  C_k(\,\cdot\,\mid X_{t_{k-1}}^{\mathrm{prop}}),
+  \qquad
+  X_{t_{k-1}}^{\mathrm{prop}}
+  \sim
+  \hat K_{t_{k-1}\mid t_k}(\,\cdot\,\mid X_{t_k}),
+\]
+where \(C_k\) is a short Markov kernel chosen so that its invariant law is, at least approximately, the current marginal \(p_{t_{k-1}}\).
+The simplest example is a frozen-time Langevin corrector:
+\begin{equation}
+  X^{(\ell+1)}
+  =
+  X^{(\ell)}
+  +
+  \eta_k\, s(t_{k-1},X^{(\ell)})
+  +
+  \sqrt{2\eta_k}\,\xi_\ell,
+  \qquad
+  \xi_\ell\sim\mathcal{N}(0,I_d),
+  \label{eq:diffusion-corrector-ula}
+\end{equation}
+initialized at \(X^{(0)}=X_{t_{k-1}}^{\mathrm{prop}}\).
+If \(p_t\equiv \pi\) were fixed in time, then \eqref{eq:diffusion-corrector-ula} would be exactly the ULA update from \Cref{subsubsec:langevin-diffusion}.
+Here the target changes with \(k\), so the same Langevin idea is used only as a short local repair step at the frozen time \(t_{k-1}\).
+If density ratios were tractable, one could similarly add an accept/reject correction as in \Cref{subsubsec:mala}.
+Such a corrector costs extra work locally, but it can still be efficient globally if it permits a coarser grid, fewer reverse steps, or a noticeably smaller endpoint error at the same total NFE budget.
+This is the same proposal-versus-correction tradeoff as in \Cref{subsubsec:langevin-diffusion,subsubsec:mala}, now applied along the reverse bridge.
+
+The second lever is to keep the same continuous-time reverse dynamics but change the proposal itself by using a better discretization.
+When \(\varepsilon\equiv 0\), \Cref{prop:si-family-of-sdes} gives the probability-flow ODE
+\begin{equation}
+  \dot x_t=b(t,x_t),
+  \label{eq:diffusion-pf-ode-local}
+\end{equation}
+whose marginals are again \(\{p_t\}\).
+The most basic discretization is Euler:
+\[
+  x_{t_{k-1}}
+  \approx
+  x_{t_k} + (t_{k-1}-t_k)\,b(t_k,x_{t_k}).
+\]
+A more accurate two-stage rule first predicts with Euler and then averages the old and predicted drifts:
+\[
+  x^{\mathrm{prop}}
+  =
+  x_{t_k} + (t_{k-1}-t_k)\,b(t_k,x_{t_k}),
+\]
+\[
+  x_{t_{k-1}}
+  \approx
+  x_{t_k}
+  +
+  \frac{t_{k-1}-t_k}{2}
+  \Bigl(
+    b(t_k,x_{t_k})
+    +
+    b(t_{k-1},x^{\mathrm{prop}})
+  \Bigr).
+\]
+Both updates aim at the same path \(\{p_t\}\).
+They differ only in the tradeoff between computation and discretization bias.
+So the fast-sampling question is again a proposal-design question:
+how much endpoint accuracy do we get from each unit of computation?
+In diffusion language, proposal-plus-correction appears as predictor--corrector sampling \citep[Alg.~1]{song_sohl_dickstein_kingma_kumar_ermon_poole_2021_score_sde}.
+Low-NFE deterministic samplers such as DDIM \citep[\S5]{song_meng_ermon_2021_ddim} and higher-order ODE solvers such as DPM-Solver \citep[\S3 and \S5.1]{lu_zhou_bao_chen_li_zhu_2022_dpm_solver} fit the same template:
+they redesign \(\hat K_{t_{k-1}\mid t_k}\) so that the same endpoint task can be solved with fewer reverse evaluations.
+
+\subsubsection{Guidance as posterior tilting}
+\label{subsubsec:diffusion-conditional-sampling}
+
+The second task changes the target law.
+We may want a sample that matches external information \(y\): a class label, a text description, or a measurement.
+Then the target is not \(p_0\), but the conditional law \(p_0(\cdot\mid y)\).
+An unconditional reverse sampler can be perfectly valid for \(p_0\) and still be solving the wrong problem.
+
+Guidance is the name used in the diffusion literature for this target change.
+In the notation of these notes, the unconditional path \(\{p_t\}\) is replaced by the conditional path \(\{p_t^y\}\), where
+\[
+  p_t^y(dx)
+  \coloneqq
+  p_t(dx\mid y)
+  =
+  \frac{p_t(y\mid x)\,p_t(dx)}{\int p_t(y\mid x')\,p_t(dx')}.
+\]
+This is exactly the conditioning-by-likelihood-reweighting identity from \Cref{ex:conditioning-likelihood-reweighting}, now indexed by time \(t\).
+Relative to importance sampling and SMC, the only structural difference is where that likelihood factor enters:
+there it appears through weights after propagation, whereas here it is inserted directly into the reverse-time field.
+
+To express the conditional task in the same notation, let \(Y\) be an external variable and assume the joint law of \((X_t,Y)\) has a density.
+Then Bayes's rule gives the conditional score.
+
+\begin{proposition}[Conditional scores split into prior and likelihood terms]
+\label{prop:diffusion-guided-score-identity}
+For every fixed \(t\) and every \(y\) with \(p_t(y\mid x)>0\),
+\begin{equation}
+  \nabla_x \log p_t(x\mid y)
+  =
+  \nabla_x \log p_t(x)
+  +
+  \nabla_x \log p_t(y\mid x).
+  \label{eq:diffusion-guided-score-identity}
+\end{equation}
+\end{proposition}
+\begin{proof}
+Bayes's rule gives
+\[
+  p_t(x\mid y)=\frac{p_t(x)p_t(y\mid x)}{p_t(y)}.
+\]
+Taking \(\nabla_x\log\) and using that \(p_t(y)\) does not depend on \(x\) yields \eqref{eq:diffusion-guided-score-identity}.%
+\end{proof}
+
+This identity gives the sampling rule immediately.
+To sample from the conditional path, one replaces the unconditional score \(s(t,x)\) in \eqref{eq:si-forward-backward-drifts} by
+\[
+  s_y(t,x)
+  \coloneqq
+  \nabla_x \log p_t(x\mid y)
+  =
+  s(t,x)+\nabla_x \log p_t(y\mid x).
+\]
+So the reverse-time sampler is unchanged except for an added likelihood-gradient term.
+In the language of these notes, guidance is posterior tilting along the path \(\{p_t\}\):
+the prior score \(s(t,x)\) describes what the diffusion model prefers on its own, while the likelihood term \(\nabla_x\log p_t(y\mid x)\) pulls the sample toward states compatible with the side information \(y\).
+
+Sometimes one intentionally strengthens that tilt and uses
+\begin{equation}
+  s_w(t,x;y)
+  \coloneqq
+  s(t,x)+w\,\nabla_x \log p_t(y\mid x),
+  \qquad w\ge 0.
+  \label{eq:diffusion-weighted-conditional-score}
+\end{equation}
+When \(w=1\), this is the exact conditional score.
+When \(w>1\), it is a more concentrated target:
+\[
+  s_w(t,x;y)
+  =
+  \nabla_x \log \bigl(p_t(x)p_t(y\mid x)^w\bigr).
+\]
+So \(w>1\) does not leave the conditional law unchanged; it produces a tempered version that puts more mass on states that fit \(y\) especially well.
+This is the same power-target idea as in \Cref{subsec:tempering}, but now it is applied only to the likelihood factor rather than to the whole target law.
+When \(w=1\) we are solving the exact conditional sampling problem.
+When \(w>1\) we are intentionally biasing the target toward stronger agreement with \(y\), typically to trade some faithfulness to the exact conditional law for sharper or more recognizable samples.
+
+If a model supplies both an unconditional estimate \(s_{\varnothing}(t,x)\approx s(t,x)\) and a conditional estimate \(s_y(t,x)\approx \nabla_x\log p_t(x\mid y)\), then the common interpolation
+\[
+  s_{\mathrm{cfg}}(t,x;y)
+  \coloneqq
+  s_{\varnothing}(t,x)+w\bigl(s_y(t,x)-s_{\varnothing}(t,x)\bigr)
+\]
+reduces, in the exact case, to the weighted tilt \eqref{eq:diffusion-weighted-conditional-score}.
+This is the form often used in practice.
+
+The diffusion literature uses different names depending on how the extra likelihood information is obtained.
+When the likelihood-gradient term is supplied by a separate noisy-time classifier, the method is called classifier guidance \citep[\S4]{dhariwal_nichol_2021_diffusion_models_beat_gans}.
+When the model itself is trained to produce both unconditional and conditional outputs and the two are interpolated as above, the method is called classifier-free guidance \citep[\S2]{ho_salimans_2022_classifier_free_guidance}.
+In our notation both methods are instances of the same posterior-tilting identity; they differ only in how \(\nabla_x\log p_t(y\mid x)\) is approximated.
+The same formula also covers inverse problems once \(y\) is interpreted as a measurement, so we do not need a separate sampling principle for that case.
+
+\subsubsection{A sample set as a distributional approximation}
+\label{subsubsec:diffusion-diverse-sampling}
+
+The third task changes the objective again.
+Sometimes the output of interest is not one correct sample but a set of \(N\) samples that approximates the target law well as a whole.
+Then the natural object is the empirical measure
+\[
+  \hat\mu_N
+  \coloneqq
+  \frac1N\sum_{i=1}^N \delta_{x_0^i},
+\]
+and the practical goal is that \(\hat\mu_N\) approximate the target law \(p_0(\cdot\mid y)\) well.
+Equivalently, for many test functions \(f\), we want
+\[
+  \frac1N\sum_{i=1}^N f(x_0^i)
+  \approx
+  \E\bigl[f(X_0)\mid Y=y\bigr].
+\]
+This is the empirical-measure viewpoint from the particle methods earlier in the course, especially \Cref{subsubsec:smc-particles,subsubsec:smc-resampling}.
+In particular, \Cref{prop:particle-cloud-unbiased-variance} shows that once the objective is empirical approximation, exact independence is sufficient but not necessary:
+a coupled cloud can reduce empirical-average variance for important test functions and therefore outperform an i.i.d.\ cloud at the same particle budget.
+
+To write the problem cleanly in the course notation, let
+\[
+  x_t^{1:N}\coloneqq (x_t^1,\dots,x_t^N)\in(\R^d)^N.
+\]
+If we insist on exact i.i.d.\ sampling, then the natural \(N\)-particle target is just the product law
+\[
+  (p_t^y)^{\otimes N}(dx_t^{1:N})
+  =
+  \prod_{i=1}^N p_t(dx_t^i\mid y).
+\]
+Independent sampling gives the correct one-particle marginals, but it does not by itself solve the finite-\(N\) approximation problem.
+At finite \(N\), an i.i.d.\ batch can cluster and leave important regions underrepresented.
+So if the goal is to approximate the law well with a fixed particle budget, it can be worthwhile to replace the product target by a coupled law:
+\begin{equation}
+  \Pi_t(dx_t^{1:N}\mid y)
+  \propto
+  (p_t^y)^{\otimes N}(dx_t^{1:N})\,
+  \exp\!\bigl(\lambda R_t(x_t^{1:N})\bigr).
+  \label{eq:diffusion-diverse-path-target}
+\end{equation}
+Here \(\lambda\ge 0\) controls the interaction strength, and \(R_t\) is chosen to reward spread, coverage, or repulsion.
+When \(\lambda=0\), \eqref{eq:diffusion-diverse-path-target} reduces to the i.i.d.\ product law.
+When \(\lambda>0\), the target is a coupled cloud chosen to improve the empirical approximation obtained from \(N\) particles.
+
+Now the state variable is the whole configuration \(X_t^{1:N}\), not a single particle.
+This is an augmented-state construction in exactly the sense of \Cref{sec:augmented-state-sampling}:
+the state is enlarged from one particle to a whole interacting configuration so that local computations can produce a better global approximation.
+Once the problem is written this way, the earlier tools apply directly:
+one can run Langevin or Metropolis updates on the joint configuration, or propagate and reweight a particle population as in \Cref{subsec:smc}.
+The interaction term is not a correction applied after sampling.
+It is part of the target itself.
+
+This is the viewpoint taken explicitly in Particle Guidance, which introduces a time-dependent joint-particle potential in order to obtain non-i.i.d.\ diverse diffusion samples \citep[\S3]{corso_xu_de_bortoli_barzilay_jaakkola_2023_particle_guidance}.
+In the notation of these notes, that paper is an interacting-particle sampler on a product-space diffusion target.
+The phrase ``non-i.i.d.'' there simply means that the joint law \(\Pi_t\) no longer factorizes into a product of one-particle marginals.
+
+These three tasks explain much of the modern sampling literature around diffusion models.
+Predictor--corrector sampling, DDIM, and DPM-Solver redesign the proposal or local correction while keeping the same target.
+Classifier guidance and classifier-free guidance implement posterior tilting along the path.
+Particle Guidance replaces the product target by an interacting law on the particle cloud.
+The reverse bridge provides the path \(\{p_t\}\); the sampling toolkit from the earlier units does the rest.

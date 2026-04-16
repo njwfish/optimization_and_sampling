@@ -1,0 +1,394 @@
+\subsection{Tempering methods}
+\label{subsec:tempering}
+
+Hamiltonian Monte Carlo, NUTS, MALA, and random-walk Metropolis all make \emph{local} moves.
+That locality is not a serious problem when the target has one connected typical set, but it becomes a major obstacle when $\pi(x)\propto e^{-U(x)}$ has several well-separated modes.
+If two basins are separated by a region where $U(x)$ is much larger, then any local chain must spend a long time proposing moves through exponentially unlikely states before it can switch basins.
+The practical symptom is familiar: the chain mixes rapidly \emph{within} one mode but spends an intractably long time discovering the others.
+
+Tempering addresses this by introducing auxiliary distributions whose energy barriers are lower than those of the target.
+For an inverse temperature $\beta\in(0,1]$, define the tempered density
+\begin{equation}
+  \pi_\beta(x)
+  \propto
+  e^{-\beta U(x)}.
+  \label{eq:tempering-pi-beta}
+\end{equation}
+When $\beta=1$ we recover the target distribution, and when $\beta<1$ the landscape is flatter because every energy difference is scaled down by $\beta$.
+This is the same flattening mechanism that appeared in simulated annealing in \Cref{subsec:simulated-annealing}, but the goal is different here:
+we are not cooling toward an optimizer, but using hot auxiliary levels to help an MCMC chain travel between cold modes while still preserving the original target at $\beta=1$.
+This temperature-ladder viewpoint is a standard extension of local MCMC for multimodal targets; see \citet[\S5.7]{neal_2011_hmc} for the high-level sampling motivation and \citet[\S\S2.1--2.3]{earl_deem_2005_parallel_tempering} for the standard replica-exchange formulation.
+\Cref{fig:tempering-ladder} sketches this geometry.
+
+\begin{figure}[H]
+  \centering
+  \input{figures/main_notes/augmented_state_sampling/fig_tempering_ladder}
+  \caption{Lower inverse temperatures flatten the effective energy landscape and make barrier crossing easier.
+  Tempering methods introduce a finite ladder of such auxiliary levels and then move information between them so that discoveries made by hot chains can propagate back to the cold target.}
+  \label{fig:tempering-ladder}
+\end{figure}
+
+The augmented-state logic is the same in both tempering methods.
+One introduces auxiliary hot levels on which local kernels can cross barriers more easily, then couples those levels to the cold target so that improved basin exploration at high temperature can be transferred back to $\beta=1$.
+Simulated tempering and parallel tempering are the two standard realizations of that idea: the first augments the state with a temperature index, while the second augments it with a full collection of replicas across the ladder.
+
+In practice one fixes a finite inverse-temperature ladder
+\begin{equation}
+  1=\beta_1 > \beta_2 > \cdots > \beta_L > 0
+  \label{eq:tempering-ladder}
+\end{equation}
+and, for each level $\ell$, chooses a Markov kernel $K_\ell$ that leaves $\pi_{\beta_\ell}$ invariant.
+The kernels can all be of the same type, such as random-walk Metropolis or HMC with temperature-dependent tuning, or they can differ across levels.
+What matters is that each level mixes reasonably well \emph{locally}, since the purpose of the ladder is to handle global movement across modes.
+
+\subsubsection{From annealing to temperature ladders}
+\label{subsubsec:tempering-ladders}
+
+Simulated annealing uses one chain and a temperature schedule that is eventually driven toward $0$, so the hot exploratory dynamics disappear as the run proceeds.
+Tempering keeps the same flattening idea but organizes it differently.
+Instead of a single cooling schedule, it augments the state with a finite ladder of temperatures and preserves a joint stationary law whose cold marginal is still the target.
+Hot exploration is therefore not a transient prelude to the real computation; it remains available throughout the run and can continue to feed information back to the cold chain.
+
+The practical role of the ladder is to balance two competing demands.
+The hottest levels should be flat enough to cross barriers that trap the cold target, while neighboring temperatures must still be close enough that information can move back down the ladder.
+If the gaps are too large, the hot and cold levels effectively decouple.
+If they are too small, one spends computation maintaining many nearly identical replicas or temperature states.
+The ladder therefore plays the same role as a geometric discretization: it decides how finely the auxiliary state must resolve the hard part of the original problem.
+
+\subsubsection{Simulated tempering}
+\label{subsubsec:simulated-tempering}
+
+Simulated tempering lets a single chain move between temperature levels.
+At the current level it updates \(x\) with the local kernel for that temperature, then it proposes changing the temperature index and accepts or rejects that move by a Metropolis rule.
+If those temperature moves mix well, one chain can alternate between hot exploration and cold sampling instead of maintaining a full population of replicas.
+
+To write the invariant law, augment the state with the temperature index itself.
+Let $I\in\{1,\dots,L\}$ denote the current inverse-temperature level, and choose log-weights $g_1,\dots,g_L$.
+The joint target on $(x,I)$ is
+\begin{equation}
+  \Pi_{\mathrm{ST}}(x,\ell)
+  \propto
+  \exp\!\bigl(-\beta_\ell U(x) + g_\ell\bigr).
+  \label{eq:simulated-tempering-joint}
+\end{equation}
+The $x$-conditional given $I=\ell$ is exactly $\pi_{\beta_\ell}$.
+The temperature marginal is
+\begin{equation}
+  \Pi_{\mathrm{ST}}(I=\ell)
+  \propto
+  e^{g_\ell} Z_\ell,
+  \qquad
+  Z_\ell \coloneqq \int e^{-\beta_\ell U(x)}\,dx.
+  \label{eq:simulated-tempering-marginal}
+\end{equation}
+Hence choosing $g_\ell \approx -\log Z_\ell$ makes the ladder approximately flat under stationarity.
+This is useful because a simulated-tempering chain that almost never visits the hot levels cannot use them to move between modes.
+In practice one does not need highly accurate free-energy estimates here.
+What matters is that the empirical distribution of the temperature index is not grossly imbalanced.
+Because only differences of the $g_\ell$ matter in \eqref{eq:simulated-tempering-acceptance}, it is natural to tune them directly on the log scale:
+one can start with all $g_\ell$ equal, or with rough pilot estimates of $\log Z_\ell$ obtained from short runs or neighboring-temperature importance estimates, and then adjust the $g_\ell$ after a pilot run so that rarely visited temperatures get larger weights and overvisited temperatures get smaller ones.
+For neighboring levels this estimation problem is mildest because
+\[
+  \frac{Z_{\ell+1}}{Z_\ell}
+  =
+  \E_{\pi_{\beta_\ell}}\!\left[
+    \exp\!\bigl(-(\beta_{\ell+1}-\beta_\ell)U(X)\bigr)
+  \right],
+\]
+so short pilot runs can estimate successive log-ratios and then accumulate them along the ladder.
+As usual with importance sampling, this is reliable only when neighboring temperatures overlap well enough.
+It is therefore common to work with auxiliary pilot parameters $v_\ell\coloneqq g_\ell$ and update those directly:
+if temperature $\ell$ is visited too rarely, increase $v_\ell$; if it is visited too often, decrease $v_\ell$.
+Those pilot values are only a device for keeping the index $I$ moving; they need not be precise estimates of the normalizing constants themselves.
+
+There are two natural move types.
+At fixed temperature we update $x$ using the kernel $K_\ell$.
+At fixed $x$ we propose a new temperature index and accept or reject it by a Metropolis step on \eqref{eq:simulated-tempering-joint}.
+
+\begin{proposition}[Temperature-move acceptance ratio]
+\label{prop:simulated-tempering-acceptance}
+Suppose the current state is $(x,\ell)$ and propose a new level $m$ from a proposal mass function $r(m\mid \ell)$.
+Then the Metropolis acceptance probability for the target \eqref{eq:simulated-tempering-joint} is
+\begin{equation}
+  \alpha_{\mathrm{ST}}\bigl((x,\ell),(x,m)\bigr)
+  =
+  \min\!\left\{
+    1,\,
+    \exp\!\bigl(-(\beta_m-\beta_\ell)U(x) + g_m-g_\ell\bigr)
+    \frac{r(\ell\mid m)}{r(m\mid \ell)}
+  \right\}.
+  \label{eq:simulated-tempering-acceptance}
+\end{equation}
+\end{proposition}
+\begin{proof}
+The Metropolis ratio is
+\[
+  \frac{\Pi_{\mathrm{ST}}(x,m)\,r(\ell\mid m)}{\Pi_{\mathrm{ST}}(x,\ell)\,r(m\mid \ell)}.
+\]
+Substituting \eqref{eq:simulated-tempering-joint} gives
+\[
+  \frac{
+    \exp\!\bigl(-\beta_m U(x)+g_m\bigr)\,r(\ell\mid m)
+  }{
+    \exp\!\bigl(-\beta_\ell U(x)+g_\ell\bigr)\,r(m\mid \ell)
+  }
+  =
+  \exp\!\bigl(-(\beta_m-\beta_\ell)U(x)+g_m-g_\ell\bigr)
+  \frac{r(\ell\mid m)}{r(m\mid \ell)}.
+\]
+Applying the usual $\min\{1,\cdot\}$ rule gives \eqref{eq:simulated-tempering-acceptance}.%
+\end{proof}
+
+The key practical point in \eqref{eq:simulated-tempering-acceptance} is that the unknown normalizing constants $Z_\ell$ cancel.
+We need only the energy $U(x)$ and the chosen weights $g_\ell$.
+Simulated tempering is therefore feasible even though the ideal choice $g_\ell=-\log Z_\ell$ is itself unavailable exactly.
+In implementation those ratios are evaluated on the log scale, exactly as in \Cref{subsubsec:working-on-log-scale}, because the energies and ladder weights can vary by many orders of magnitude across temperatures.
+This coupling between the ladder $(\beta_\ell)$ and the balancing weights $(g_\ell)$ is also what makes simulated tempering more delicate to tune than parallel tempering.
+
+\begin{algorithm}[H]
+  \caption{Simulated tempering}
+  \label{alg:simulated-tempering}
+  \begin{algorithmic}[1]
+    \Require Inverse temperatures $\beta_1>\cdots>\beta_L$, kernels $K_1,\dots,K_L$, log-weights $g_1,\dots,g_L$, temperature proposal $r(\cdot\mid \cdot)$, state updates per temperature move $M$, initial state $(x^{(0)},I^{(0)})$, iterations $T$
+    \For{$t=0,1,\dots,T-1$}
+      \State $x \gets x^{(t)}$, $i \gets I^{(t)}$
+      \For{$m=1,2,\dots,M$}
+        \State Draw $x \sim K_i(x,\cdot)$
+      \EndFor
+      \State Propose $j \sim r(\cdot\mid i)$
+      \State Draw $u \sim \mathrm{Unif}(0,1)$
+      \If{$u \le \alpha_{\mathrm{ST}}\bigl((x,i),(x,j)\bigr)$}
+        \State $I^{(t+1)} \gets j$
+      \Else
+        \State $I^{(t+1)} \gets i$
+      \EndIf
+      \State $x^{(t+1)} \gets x$
+    \EndFor
+    \State \Return $(x^{(t)},I^{(t)})_{t=0}^T$
+  \end{algorithmic}
+\end{algorithm}
+
+Because each $x$-update preserves the conditional law $\pi_{\beta_i}$ at fixed $i$, and each temperature move is a valid Metropolis step for \eqref{eq:simulated-tempering-joint}, the combined chain leaves $\Pi_{\mathrm{ST}}$ invariant.
+The target samples are the states with $I=1$; the higher-temperature visits are auxiliary moves that help those cold states change basins.
+
+\subsubsection{Parallel tempering}
+\label{subsubsec:parallel-tempering}
+
+Parallel tempering, also called \emph{replica exchange MCMC}, keeps one replica at each temperature instead of letting a single chain climb up and down the ladder.
+The joint target on $L$ replicas is the product measure
+\begin{equation}
+  \Pi_{\mathrm{PT}}(x_1,\dots,x_L)
+  \coloneqq
+  \prod_{\ell=1}^L \pi_{\beta_\ell}(x_\ell).
+  \label{eq:parallel-tempering-joint}
+\end{equation}
+At fixed replica labels, each chain evolves with its own kernel $K_\ell$.
+Communication between temperatures happens through occasional swap proposals, usually between adjacent levels.
+
+Suppose we propose to swap the states at levels $\ell$ and $\ell+1$.
+Because the proposal is symmetric, the acceptance probability depends only on how the product target changes under that swap.
+
+\begin{proposition}[Swap acceptance ratio]
+\label{prop:parallel-tempering-swap}
+Let the current replica states be $(x_1,\dots,x_L)$ and propose to exchange $x_\ell$ and $x_{\ell+1}$ for some $\ell\in\{1,\dots,L-1\}$.
+Then the Metropolis acceptance probability is
+\begin{equation}
+  \alpha_{\mathrm{swap}}
+  =
+  \min\!\left\{
+    1,\,
+    \exp\!\bigl((\beta_\ell-\beta_{\ell+1})(U(x_\ell)-U(x_{\ell+1}))\bigr)
+  \right\}.
+  \label{eq:parallel-tempering-swap}
+\end{equation}
+\end{proposition}
+\begin{proof}
+Under \eqref{eq:parallel-tempering-joint}, all factors other than levels $\ell$ and $\ell+1$ cancel in the Metropolis ratio.
+Hence
+\[
+  \frac{
+    \pi_{\beta_\ell}(x_{\ell+1})\,\pi_{\beta_{\ell+1}}(x_\ell)
+  }{
+    \pi_{\beta_\ell}(x_\ell)\,\pi_{\beta_{\ell+1}}(x_{\ell+1})
+  }
+  =
+  \exp\!\bigl(-\beta_\ell U(x_{\ell+1})-\beta_{\ell+1}U(x_\ell)
+  +\beta_\ell U(x_\ell)+\beta_{\ell+1}U(x_{\ell+1})\bigr),
+\]
+which simplifies to \eqref{eq:parallel-tempering-swap}.
+Applying $\min\{1,\cdot\}$ yields the stated acceptance probability.%
+\end{proof}
+
+\begin{algorithm}[H]
+  \caption{Parallel tempering}
+  \label{alg:parallel-tempering}
+  \begin{algorithmic}[1]
+    \Require Inverse temperatures $\beta_1>\cdots>\beta_L$, kernels $K_1,\dots,K_L$, initial replicas $x_1^{(0)},\dots,x_L^{(0)}$, iterations $T$
+    \For{$t=0,1,\dots,T-1$}
+      \For{$\ell=1,2,\dots,L$}
+        \State Draw $x_\ell \sim K_\ell(x_\ell,\cdot)$
+      \EndFor
+      \State Choose an adjacent pair $(\ell,\ell+1)$
+      \State Draw $u \sim \mathrm{Unif}(0,1)$
+      \If{$u \le \alpha_{\mathrm{swap}}$ from \eqref{eq:parallel-tempering-swap}}
+        \State Exchange $x_\ell$ and $x_{\ell+1}$
+      \EndIf
+      \State Record the cold replica $x_1$
+    \EndFor
+    \State \Return $(x_1^{(t)},\dots,x_L^{(t)})_{t=0}^T$
+  \end{algorithmic}
+\end{algorithm}
+
+Parallel tempering has a complementary trade-off to simulated tempering.
+It avoids the unknown weight problem because the joint target is just a product of tempered marginals, but it requires maintaining $L$ replicas at once.
+The conceptual benefit is clean:
+the hot replicas can cross barriers that trap the cold chain, and successful swap moves then pull that new basin membership back down the ladder to $\beta_1=1$.
+In modern implementations the replica updates can often be run in parallel, which is where the method gets its name, but from the probabilistic point of view the essential ingredient is the swap mechanism rather than the hardware.
+
+\subsubsection{Choosing the ladder in practice}
+\label{subsubsec:tempering-tuning}
+
+The main tuning question is how to choose the ladder \eqref{eq:tempering-ladder}.
+It should be fine enough that neighboring temperatures communicate, but not so fine that computation is wasted on too many nearly identical levels.
+A common heuristic is to tune adjacent temperature moves or swap proposals to be accepted at a moderate rate, often around $20\%$ to $50\%$.
+The standard acceptance-rate discussion is reviewed by \citet[\S2.3]{earl_deem_2005_parallel_tempering}, who summarize both the empirical $20\%$ rule and the related $23\%$ calculation from diffusion-style approximations.
+Very high acceptance usually means the ladder is denser than it needs to be, while very low acceptance means the gaps between temperatures are too large for useful communication.
+It is important to inspect these acceptance rates \emph{pair by pair}, not only through an average across the whole ladder.
+A ladder with adjacent swap rates $(0.8,0.3,0.04,0.1)$ still has an average near $0.31$, but the single $4\%$ gap effectively splits the ladder into two weakly communicating pieces.
+In that situation the right repair is usually local---insert one extra temperature inside the bad gap or shrink that particular spacing---rather than uniformly densifying the whole ladder.
+
+For parallel tempering, a more informative view looks at the \emph{energy} random variable
+\[
+  E_\beta \coloneqq U(X_\beta),
+  \qquad
+  X_\beta \sim \pi_\beta.
+\]
+Neighboring swap moves work well only when the histograms of $E_{\beta_\ell}$ and $E_{\beta_{\ell+1}}$ overlap appreciably.
+If the hotter level typically has much larger energy than the colder one, then a proposed swap compares two states whose energies are already well separated, and the exponent in \eqref{eq:parallel-tempering-swap} is usually very negative.
+This is why energy histograms are often a better ladder diagnostic than visual inspection of the $x$-marginals; see \citet[\S2.3]{earl_deem_2005_parallel_tempering}.
+They also help diagnose whether the ladder is hot enough at all:
+if the hottest levels still look trapped in one basin, then the problem is not merely the spacing between adjacent temperatures, but that $\beta_L$ itself is still too large.
+
+That overlap heuristic also leads to a useful small-gap calculation.
+Write
+\[
+  Z(\beta) \coloneqq \int e^{-\beta U(x)}\,dx,
+  \qquad
+  \mu(\beta) \coloneqq \E_{\pi_\beta}[U(X)].
+\]
+Then
+\[
+  \mu(\beta)
+  =
+  -\frac{d}{d\beta}\log Z(\beta),
+\]
+and differentiating once more gives the thermodynamic identity
+\begin{equation}
+  \mu'(\beta)
+  =
+  -\operatorname{Var}_{\pi_\beta}(U(X)).
+  \label{eq:tempering-thermodynamic-identity}
+\end{equation}
+To see this directly, differentiate under the integral sign:
+\[
+  \mu'(\beta)
+  =
+  \frac{d}{d\beta}
+  \left(
+    \frac{1}{Z(\beta)}\int U(x)e^{-\beta U(x)}\,dx
+  \right)
+  =
+  -\E_{\pi_\beta}[U(X)^2] + \E_{\pi_\beta}[U(X)]^2.
+\]
+
+Now compare neighboring levels $\beta$ and $\beta-\Delta\beta$ with $\Delta\beta>0$ small, and let
+\[
+  X \sim \pi_\beta,
+  \qquad
+  X' \sim \pi_{\beta-\Delta\beta},
+  \qquad
+  \Delta U \coloneqq U(X') - U(X).
+\]
+The swap acceptance probability becomes
+\[
+  \alpha
+  =
+  \min\!\left\{1,e^{-\Delta\beta\,\Delta U}\right\},
+\]
+so if $A(\Delta\beta)\coloneqq \E[\alpha]$, then
+\[
+  1-A(\Delta\beta)
+  =
+  \E\!\left[
+    \bigl(1-e^{-\Delta\beta\,\Delta U}\bigr)\mathbf{1}_{\{\Delta U>0\}}
+  \right].
+\]
+The exact small-gap behavior depends on the distribution of the positive part $(\Delta U)_+$, not only on its variance.
+Still, the natural scale is easy to read off from the first two moments of $\Delta U$.
+Using \eqref{eq:tempering-thermodynamic-identity},
+\[
+  \E[\Delta U]
+  =
+  \mu(\beta-\Delta\beta)-\mu(\beta)
+  =
+  -\mu'(\beta)\,\Delta\beta + O\bigl((\Delta\beta)^2\bigr)
+  =
+  \operatorname{Var}_{\pi_\beta}(U(X))\,\Delta\beta + O\bigl((\Delta\beta)^2\bigr),
+\]
+while independence of $X$ and $X'$ gives
+\[
+  \E[\Delta U^2]
+  =
+  \operatorname{Var}_{\pi_{\beta-\Delta\beta}}(U(X))
+  +
+  \operatorname{Var}_{\pi_\beta}(U(X))
+  +
+  \bigl(\E[\Delta U]\bigr)^2
+  =
+  2\,\operatorname{Var}_{\pi_\beta}(U(X)) + O(\Delta\beta).
+\]
+Moreover, $1-e^{-u}\le u$ for every $u\ge 0$, so
+\[
+  1-A(\Delta\beta)
+  \le
+  \Delta\beta\,\E[(\Delta U)_+]
+  \le
+  \Delta\beta\,\sqrt{\E[\Delta U^2]}.
+\]
+Therefore the rejection probability is controlled at the scale
+\begin{equation}
+  1-A(\Delta\beta)
+  =
+  O\!\left(\Delta\beta\sqrt{\operatorname{Var}_{\pi_\beta}(U(X))}\right).
+  \label{eq:tempering-small-gap-scaling}
+\end{equation}
+up to a constant that depends on the law of $(\Delta U)_+$.
+This bound does not identify the exact asymptotic constant, but it does show which dimensionless quantity governs neighboring-level swaps.
+That leads to the practical spacing rule
+\begin{equation}
+  (\beta_\ell-\beta_{\ell+1})
+  \sqrt{\operatorname{Var}_{\pi_{\beta_\ell}}(U(X))}
+  \approx
+  \text{constant}
+  \label{eq:tempering-variance-spacing}
+\end{equation}
+if one wants roughly comparable swap acceptance along the ladder.
+In words, the inverse-temperature gaps should shrink where the energy fluctuates more and can be wider where the energy variance is small.
+This is the small-gap logic behind the geometric-spacing heuristic reviewed by \citet[\S2.3]{earl_deem_2005_parallel_tempering}.
+
+The second question is how many local state updates to run at each temperature before attempting a temperature move or swap.
+If the chain changes temperature too often relative to local exploration, it never has time to exploit the geometry of the current level.
+In many implementations one therefore performs several local updates between temperature proposals, or alternates deterministic blocks of local moves with occasional swap attempts.
+A useful starting cadence is about $10$--$100$ within-temperature state updates per temperature move or swap attempt, consistent with the standard replica-exchange workflow described by \citet[\S2.1]{earl_deem_2005_parallel_tempering}.
+Equivalently, if move types are interleaved at random, one wants temperature changes to be much rarer than local state updates.
+When the local kernel is itself geometric, such as HMC or NUTS, these within-temperature updates are what turn a hot level into a useful exploration device rather than a mere bookkeeping state.
+If that cadence is too aggressive, the chain spends its effort bookkeeping temperature changes before each level has mixed locally; if it is too sparse, new basin information discovered at hot levels diffuses back to $\beta_1=1$ too slowly.
+
+The variance rule \eqref{eq:tempering-variance-spacing} is most useful in pilot adaptation.
+One runs a short preliminary tempering simulation, estimates the adjacent swap rates and the energy variances at each level, and then redistributes the $\beta_\ell$ so that the bad gaps are split and the neighboring acceptance rates are closer to uniform.
+This is another place where the earlier one-bad-gap diagnostic matters:
+the goal is not a cosmetically good average acceptance, but steady communication all the way down the ladder.
+
+The requirement that the ladder be finite also matters theoretically.
+To prove geometric ergodicity one needs drift and minorization control that is uniform across the temperature levels, and that is substantially harder to obtain on an infinite ladder.
+Practical tempering methods therefore work with a finite collection of temperatures and treat the ladder itself as a tuning object.

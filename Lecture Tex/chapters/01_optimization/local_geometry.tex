@@ -1,0 +1,16 @@
+\subsection{Local models and convexity}
+\label{subsec:optimization-euclidean}
+
+Much of modern statistics and machine learning can be phrased as choosing a parameter vector $x\in\R^d$ to minimize an objective.
+To decide how to move from a current point, we first need a local model of how the objective changes nearby.
+Gradients record first-order change, Hessians record curvature, and convexity and smoothness inequalities tell us when these local objects control behavior away from the current point.
+We begin with these Euclidean definitions and then turn them into descent guarantees that will drive the algorithms in the rest of the unit.
+
+\subsubsection{Gradients, Hessians, and local models}
+
+\input{chapters/01_optimization/chunks/gd_01_body}
+
+\subsubsection{Convexity, strong convexity, and smoothness}
+\label{subsec:convex-strongconvex-smooth}
+
+\input{chapters/01_optimization/chunks/gd_04_body}

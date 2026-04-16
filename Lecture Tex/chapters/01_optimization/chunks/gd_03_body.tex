@@ -1,0 +1,53 @@
+Exact line search chooses the step size by solving
+\begin{equation}
+  t^{(k)} = \argmin_{s>0} f\bigl(x^{(k)} + s \Delta x^{(k)}\bigr).
+  \label{eq:exact-line-search}
+\end{equation}
+This yields the best decrease along the ray, but it is not always tractable.
+More importantly, in many problems we want a step-size rule that works robustly without solving a difficult one-dimensional optimization at every iteration.
+
+Backtracking line search (Armijo) chooses a step size by repeatedly shrinking until a \emph{sufficient decrease} condition holds.
+Fix parameters $\alpha \in (0,1/2)$ and $\beta \in (0,1)$ and require the Armijo condition
+\begin{equation}
+  f(x+t\Delta x) \le f(x) + \alpha t \nabla f(x)^\top \Delta x,
+  \label{eq:armijo-condition}
+\end{equation}
+to hold.
+See \citet[\S9.2]{boyd_vandenberghe_2004_convex}.
+
+\begin{algorithm}
+  \caption{Backtracking line search (Armijo)}
+  \label{alg:backtracking}
+  \begin{algorithmic}[1]
+    \Require Differentiable $f$, point $x$, descent direction $\Delta x$, parameters $\alpha \in (0,1/2)$, $\beta \in (0,1)$
+    \Ensure Step size $t$
+    \State $t \gets 1$
+    \While{$f(x+t\Delta x) > f(x) + \alpha t \nabla f(x)^\top \Delta x$}
+      \State $t \gets \beta t$
+    \EndWhile
+    \State \Return $t$
+  \end{algorithmic}
+\end{algorithm}
+
+Typical parameter choices are:
+\begin{itemize}[leftmargin=*]
+  \item $\alpha$ controls how much decrease we demand; typical values are $\alpha \in (0.01,0.3)$.
+  \item $\beta$ controls how aggressively we shrink; typical values are $\beta \in (0.1,0.8)$ (smaller $\beta$ means bigger reductions per backtracking step).
+\end{itemize}
+Backtracking is most natural in deterministic optimization where we can reliably evaluate $f(x+t\Delta x)$.
+In stochastic settings (e.g.\ mini-batch training), function values are noisy, so line search is less common; one typically uses fixed or scheduled learning rates, possibly with averaging or momentum.
+For the running logistic regression example in \cref{ex:logistic-reg}, this means that once we choose a direction $\Delta\theta$, we can evaluate the full objective $s(\theta+t\Delta\theta)$ exactly and shrink $t$ until the sufficient-decrease test passes.
+
+\begin{figure}[t]
+  \centering
+  \input{figures/main_notes/optimization/fig_armijo_backtracking}
+  \caption{Geometry of the Armijo (sufficient decrease) condition for $\phi(t)=f(x+t\Delta x)$.
+  The Armijo line $\phi(0)+\alpha t\,\phi'(0)$ intersects $\phi$ at $t_0$.
+  Backtracking starts at $t=1$ and returns $t=\beta^k$ (possibly $t=1$) such that $\phi(t)\le \phi(0)+\alpha t\,\phi'(0)$.
+  }
+  \label{fig:armijo-backtracking}
+\end{figure}
+
+Backtracking line search is a cheap way to find a step size that is ``small enough'' without knowing global smoothness constants.
+The Armijo condition compares the actual decrease $f(x+t\Delta x)-f(x)$ to the first-order prediction $t\nabla f(x)^\top \Delta x$.
+If $f$ is reasonably well-approximated by its tangent for small steps, repeated shrinking will eventually make the inequality hold (see \citet[\S9.2]{boyd_vandenberghe_2004_convex}).

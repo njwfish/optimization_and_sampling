@@ -1,0 +1,391 @@
+\subsubsection{Langevin diffusion and the unadjusted Langevin algorithm}
+\label{subsec:mcmc-gradient-based}
+\label{subsubsec:langevin-diffusion}
+
+Many modern targets can be written in energy form,
+\[
+  \pi(x) \propto e^{-U(x)},
+  \qquad
+  x\in\R^d,
+\]
+where $U:\R^d\to\R$ is differentiable.
+The basic random-walk Metropolis construction from \Cref{subsec:mh} treats \(\pi\) as a black box: proposals are centered at the current state and do not use any derivative information about where the density is increasing.
+When gradients are available, we can do better.
+The vector \(-\nabla U(x)\) points toward higher-probability regions, so it gives a local directional hint that random-walk proposals ignore.
+Langevin methods use that hint while still adding noise, so the algorithm samples from the distribution instead of simply descending toward a mode.
+
+The conceptual starting point is the overdamped Langevin diffusion
+\begin{equation}
+  dX_t = -\nabla U(X_t)\,dt + \sqrt{2}\,dB_t,
+  \label{eq:langevin-sde}
+\end{equation}
+where $(B_t)_{t\ge 0}$ is standard Brownian motion in $\R^d$.
+For the broader Langevin-to-SGLD viewpoint, see \citet[\S\S2--3]{welling_teh_2011_sgld}.
+The drift $-\nabla U(X_t)$ points downhill in the potential and therefore toward regions where $\pi$ is larger, while the Brownian term prevents the process from collapsing onto a mode.
+For small $dt$, the drift contributes an $O(dt)$ deterministic move and the noise contributes an $O(\sqrt{dt})$ random perturbation.
+This combination is exactly what distinguishes sampling from optimization: the drift alone would behave like gradient descent, but the added noise keeps the process exploring the typical set rather than converging to a single maximizer.
+To even formulate \eqref{eq:langevin-sde} cleanly, one usually assumes that the drift is globally Lipschitz, for example
+\[
+  \norm{\nabla U(x)-\nabla U(y)} \le L\norm{x-y}
+  \qquad
+  \text{for all }x,y\in\R^d.
+\]
+Under this condition the SDE is well posed: there is a unique global solution, there is no finite-time blow-up, and the law of the process depends continuously on the initial condition.
+If $U\in C^2$, this is implied by a uniform Hessian bound $\norm{\Hess U(x)}\le L$.
+
+Applying Euler--Maruyama to \eqref{eq:langevin-sde} with step size $\epsilon>0$ gives the unadjusted Langevin algorithm (ULA),
+\begin{equation}
+  x_{t+1}
+  =
+  x_t - \epsilon \nabla U(x_t) + \sqrt{2\epsilon}\,\xi_{t+1},
+  \qquad
+  \xi_{t+1}\sim\mathcal{N}(0,I_d),
+  \label{eq:ula-update-notes}
+\end{equation}
+with Gaussian one-step kernel
+\[
+  K^{\mathrm{ULA}}_\epsilon(x,dy)
+  =
+  \mathcal{N}\!\left(y;\ x-\epsilon\nabla U(x),\,2\epsilon I_d\right)dy.
+\]
+ULA is immediately implementable and often mixes much better than a pure random walk because the drift discourages proposals deep in low-density regions.
+At the same time, \eqref{eq:ula-update-notes} is only a discretization of \eqref{eq:langevin-sde}, so for fixed $\epsilon$ it usually targets an $\epsilon$-dependent approximation to $\pi$ rather than $\pi$ itself.
+Reducing $\epsilon$ decreases this bias but increases autocorrelation because successive states become more similar.
+The practical takeaway is therefore simple: under the standard regularity assumptions used to define the diffusion and its Fokker--Planck equation, the continuous-time Langevin diffusion preserves \(\pi\) exactly, while ULA is its cheap Euler discretization and inherits a step-size bias.
+\Cref{fig:ula-energy-path} shows the drift-plus-noise geometry in one dimension.
+
+\begin{figure}[t]
+  \centering
+  \input{figures/main_notes/sampling/fig_parallel_mcmc_ula_energy_path_1d}
+  \caption{A one-dimensional potential $U$ and a ULA trajectory for one fixed noise realization.
+  The drift term $-\nabla U(x)$ pulls the iterate toward low-energy regions, while the Gaussian noise provides exploration.}
+  \label{fig:ula-energy-path}
+\end{figure}
+
+For the continuous-time process it is useful to introduce the associated transition kernel
+\[
+  K_t(x,A)\coloneqq \mathbb{P}(X_t\in A\mid X_0=x),
+\]
+and the Markov semigroup acting on test functions,
+\[
+  (P_t g)(x)\coloneqq \E[g(X_t)\mid X_0=x]=\int g(y)\,K_t(x,dy).
+\]
+Then invariance means \(\pi P_t=\pi\) for every \(t\ge 0\), and the generator is the infinitesimal derivative
+\[
+  \mathcal{L}g=\lim_{t\downarrow 0}\frac{P_t g-g}{t}
+\]
+on smooth functions.
+The kernels satisfy the continuous-time Chapman--Kolmogorov relation
+\[
+  K_{s+t}(x,A)=\int K_t(y,A)\,K_s(x,dy),
+  \qquad
+  s,t\ge 0,
+\]
+or equivalently \(P_{s+t}=P_sP_t\).
+This semigroup viewpoint is the clean way to organize the next calculation: the generator describes the local drift-diffusion balance, while the semigroup describes how those infinitesimal moves accumulate over time.
+
+The next calculation records the infinitesimal balance behind that exactness.
+At stationarity, the inward drift and the outward diffusion cancel one another so that the target law is preserved rather than collapsed onto the mode.
+For a smooth test function $g$, the generator of \eqref{eq:langevin-sde} is
+\begin{equation}
+  (\mathcal{L}g)(x)
+  =
+  -\ip{\nabla U(x)}{\nabla g(x)} + \Delta g(x),
+  \label{eq:langevin-generator}
+\end{equation}
+and the corresponding Fokker--Planck equation for the density $f_t$ of $X_t$ is
+\begin{equation}
+  \partial_t f_t(x)
+  =
+  \nabla\cdot\bigl(f_t(x)\nabla U(x)\bigr)+\Delta f_t(x)
+  =
+  \nabla\cdot\bigl(f_t(x)\nabla U(x)+\nabla f_t(x)\bigr).
+  \label{eq:fokker-planck-langevin}
+\end{equation}
+The probability flux in \eqref{eq:fokker-planck-langevin} vanishes when $f_t(x)\propto e^{-U(x)}$, because then $\nabla f_t=-f_t\nabla U$.
+This is the infinitesimal reason the diffusion preserves the Gibbs density.
+
+\begin{proposition}[Generator identity for the Langevin Gibbs law]
+\label{prop:langevin-stationary}
+Assume $U$ is differentiable and $e^{-U}$ is integrable on $\R^d$.
+Let $\pi(x)=Z^{-1}e^{-U(x)}$.
+If boundary terms vanish for the test functions of interest, then
+\[
+  \int (\mathcal{L}g)(x)\,\pi(x)\,dx = 0
+\]
+for every smooth test function $g$ with sufficient decay.
+\end{proposition}
+\begin{proof}
+Let $g$ be smooth with sufficient decay.
+Using \eqref{eq:langevin-generator},
+\[
+  \int (\mathcal{L}g)(x)\,\pi(x)\,dx
+  =
+  \frac{1}{Z}\int \left[-\ip{\nabla U(x)}{\nabla g(x)}+\Delta g(x)\right]e^{-U(x)}\,dx.
+\]
+Integration by parts gives
+\[
+  \int (\Delta g)e^{-U}\,dx
+  =
+  -\int \ip{\nabla g}{\nabla(e^{-U})}\,dx
+  =
+  \int \ip{\nabla g}{\nabla U}\,e^{-U}\,dx,
+  \qquad
+  \nabla(e^{-U})=-e^{-U}\nabla U,
+\]
+so the two terms cancel and $\int (\mathcal{L}g)\,\pi=0$.
+\end{proof}
+This generator identity is the infinitesimal stationarity condition.
+Combined with the standard well-posedness assumptions that justify the Fokker--Planck equation and its stationary solutions, it yields invariance of \(\pi\) for the Langevin semigroup because the flux in \eqref{eq:fokker-planck-langevin} vanishes when \(f_t=\pi\).
+
+To quantify convergence, it is convenient to work with couplings.
+A \emph{coupling} of probability measures \(\mu\) and \(\nu\) on \(\R^d\) is a joint law \(\gamma\) on \(\R^d\times\R^d\) whose marginals are \(\mu\) and \(\nu\).
+The 2-Wasserstein distance is then
+\[
+  W_2(\mu,\nu)
+  \coloneqq
+  \inf_{\gamma\in\mathcal{C}(\mu,\nu)}
+  \left(\int \norm{x-y}^2\,\gamma(dx,dy)\right)^{1/2},
+\]
+where \(\mathcal{C}(\mu,\nu)\) denotes the set of all couplings.
+This metric is natural for Langevin diffusions because synchronous couplings give direct pathwise control of \(\norm{X_t-Y_t}\).
+Earlier, in \Cref{subsec:ergodicity}, we used total variation because it controls discrepancies of arbitrary events for general chains.
+Here the dynamics have an explicit Euclidean geometry, so \(W_2\) is often the more informative metric: it is built from couplings of whole trajectories and interacts directly with convexity of the drift.
+
+Under strong convexity the diffusion also forgets its initialization at an exponential rate.
+The cleanest proof uses synchronous coupling: if two copies of the diffusion share the same Brownian motion, then the noise cancels in their difference and only the contracting drift remains.
+For a probability measure \(\mu\), we write \(\mu K_t\) for the law obtained by evolving the initial distribution \(\mu\) under the Langevin diffusion for time \(t\).
+
+\begin{proposition}[Synchronous coupling gives exponential Wasserstein contraction]
+\label{prop:langevin-w2-contraction}
+Assume $\nabla U$ is globally Lipschitz and that $U$ is $m$-strongly convex, meaning
+\[
+  \ip{\nabla U(x)-\nabla U(y)}{x-y} \ge m\norm{x-y}^2
+  \qquad
+  \text{for all }x,y\in\R^d.
+\]
+Let $(X_t)$ and $(Y_t)$ be the corresponding unique strong solutions to \eqref{eq:langevin-sde} driven by the same Brownian motion and started from $X_0=x$, $Y_0=y$.
+Then for all $t\ge 0$,
+\[
+  \norm{X_t-Y_t}\le e^{-mt}\norm{x-y}.
+\]
+Consequently, for any probability measures $\mu,\nu$ on $\R^d$,
+\[
+  W_2(\mu K_t,\nu K_t)\le e^{-mt}W_2(\mu,\nu),
+\]
+where $K_t$ denotes the Langevin transition kernel at time $t$.
+\end{proposition}
+\begin{proof}
+With the same Brownian motion, the difference $Z_t\coloneqq X_t-Y_t$ satisfies the integral equation
+\[
+  Z_t = Z_0 - \int_0^t \bigl(\nabla U(X_s)-\nabla U(Y_s)\bigr)\,ds.
+\]
+Hence $Z_t$ is absolutely continuous, and for almost every $t$,
+\[
+  \frac{d}{dt}\norm{Z_t}^2
+  =
+  -2\ip{Z_t}{\nabla U(X_t)-\nabla U(Y_t)}
+  \le
+  -2m\norm{Z_t}^2.
+\]
+Gronwall's inequality yields $\norm{Z_t}\le e^{-mt}\norm{Z_0}$.
+Now let $\gamma_0$ be any coupling of $\mu$ and $\nu$, draw $(X_0,Y_0)\sim\gamma_0$, and evolve both coordinates with the same Brownian motion.
+Then $(X_t,Y_t)$ is a coupling of $\mu K_t$ and $\nu K_t$, so
+\[
+  W_2^2(\mu K_t,\nu K_t)
+  \le
+  \E\norm{X_t-Y_t}^2
+  \le
+  e^{-2mt}\E\norm{X_0-Y_0}^2.
+\]
+Taking the infimum over all initial couplings $\gamma_0$ gives
+\[
+  W_2^2(\mu K_t,\nu K_t)\le e^{-2mt}W_2^2(\mu,\nu),
+\]
+and hence the claimed contraction bound.
+\end{proof}
+
+This result explains why gradient-based samplers are especially clean for strongly log-concave targets: the continuous-time dynamics contract naturally toward equilibrium.
+For the Euler discretization, however, one must separate two distinct questions.
+If \(K_\epsilon\) denotes the ULA kernel and \(\pi_\epsilon\) its invariant law when it exists, then
+\[
+  W_2(\mu K_\epsilon^n,\pi)
+  \le
+  W_2(\mu K_\epsilon^n,\pi_\epsilon)
+  +
+  W_2(\pi_\epsilon,\pi).
+\]
+The first term is convergence of the discrete chain toward its own equilibrium, while the second is the step-size bias introduced by discretizing the diffusion.
+Under strong log-concavity and sufficiently small \(\epsilon\), ULA is itself geometrically ergodic toward \(\pi_\epsilon\); the central limitation is that at fixed \(\epsilon\) one typically has \(\pi_\epsilon\neq\pi\).
+For strongly log-concave targets with \(L\)-Lipschitz gradient, this creates a genuine two-scale requirement: when \(0<\epsilon<2/L\), one can drive \(W_2(\mu K_\epsilon^n,\pi_\epsilon)\) down geometrically in \(n\), but one still has to choose \(\epsilon\) small enough that \(W_2(\pi_\epsilon,\pi)\) is itself below the target tolerance; see \citet[Thm.~1 and \S7.1]{vempala_wibisono_2019_ula_isoperimetry} for one precise local reference.
+
+This decomposition clarifies the practical tradeoff.
+Larger \(\epsilon\) makes each step more aggressive and can reduce the number of iterations needed to approach \(\pi_\epsilon\), but it also enlarges the asymptotic bias.
+Smaller \(\epsilon\) reduces that bias while making neighboring states more correlated.
+For ULA there is therefore no single notion of ``mixing fast'': to hit a target accuracy \(\delta\), one typically needs both
+\[
+  W_2(\mu K_\epsilon^n,\pi_\epsilon)\lesssim \delta/2
+  \qquad\text{and}\qquad
+  W_2(\pi_\epsilon,\pi)\lesssim \delta/2.
+\]
+The first condition is a mixing requirement for the discrete chain, while the second is an approximation requirement for the time step.
+
+The same split appears in Monte Carlo estimation.
+If we estimate \(\E_\pi[g(X)]\) by the empirical average
+\[
+  \hat\mu_n^{\mathrm{ULA}}
+  \coloneqq
+  \frac{1}{n}\sum_{k=1}^n g(X_k),
+\]
+then after burn-in the chain average is centered at \(\E_{\pi_\epsilon}[g(X)]\), not at \(\E_\pi[g(X)]\).
+The total error therefore combines initialization bias, Monte Carlo variance from the correlated chain, and discretization bias \(\E_{\pi_\epsilon}[g]-\E_\pi[g]\).
+Equivalently,
+\[
+  \hat\mu_n^{\mathrm{ULA}}-\E_\pi[g]
+  =
+  \underbrace{\hat\mu_n^{\mathrm{ULA}}-\E_{\pi_\epsilon}[g]}_{\text{initialization + correlated Monte Carlo}}
+  +
+  \underbrace{\E_{\pi_\epsilon}[g]-\E_\pi[g]}_{\text{discretization bias}}.
+\]
+For an ergodic ULA chain the first term vanishes as \(n\to\infty\), but the second persists whenever \(\epsilon\) is held fixed.
+For first-order Euler discretizations that bias is typically \(O(\epsilon)\) for smooth observables, which is why it is useful to check whether estimates stabilize as the step size is reduced.
+In practice one either treats ULA as an approximate sampler and checks that estimates stabilize as \(\epsilon\) is reduced, or removes the bias with a Metropolis correction.
+
+\subsubsection{MALA, stochastic gradients, and the road to HMC}
+\label{subsubsec:mala}
+
+The Metropolis-adjusted Langevin algorithm (MALA) removes the discretization bias of ULA by using the ULA transition as a Metropolis--Hastings proposal.
+With
+\begin{equation}
+  q_\epsilon(y\mid x)
+  =
+  \mathcal{N}\!\left(y;\ x-\epsilon\nabla U(x),\,2\epsilon I_d\right),
+  \label{eq:mala-proposal}
+\end{equation}
+the acceptance probability is
+\begin{equation}
+  \alpha(x,y)
+  =
+  \min\!\left\{1,\frac{\tilde\pi(y)\,q_\epsilon(x\mid y)}{\tilde\pi(x)\,q_\epsilon(y\mid x)}\right\}
+  =
+  \min\!\left\{1,\exp\!\bigl(\log r(x,y)\bigr)\right\},
+  \label{eq:mala-accept}
+\end{equation}
+where
+\begin{equation}
+  \log r(x,y)
+  =
+  -U(y)+U(x)
+  -\frac{1}{4\epsilon}
+  \left(
+    \norm{x-y+\epsilon\nabla U(y)}^2
+    -
+    \norm{y-x+\epsilon\nabla U(x)}^2
+  \right).
+  \label{eq:mala-log-ratio}
+\end{equation}
+Computing \eqref{eq:mala-log-ratio} on the log scale is the stable implementation of the Metropolis correction.
+By \Cref{prop:mh-detailed-balance}, the resulting kernel leaves $\pi$ invariant exactly.
+
+The correction term in \eqref{eq:mala-log-ratio} has a simple interpretation.
+The first part, $-U(y)+U(x)$, is the usual log target ratio from Metropolis--Hastings.
+The quadratic part corrects for proposal asymmetry: it checks whether the forward drift from $x$ makes $y$ plausible and whether the reverse drift from $y$ makes $x$ plausible.
+Small step sizes therefore make MALA behave like ULA with an acceptance rate near $1$, while larger step sizes produce more rejections because the Euler proposal no longer tracks the diffusion accurately.
+
+\begin{algorithm}[t]
+  \caption{Metropolis-adjusted Langevin algorithm (MALA)}
+  \label{alg:mala}
+  \begin{algorithmic}[1]
+    \Require Potential $U(x)$ and gradient $\nabla U(x)$, step size $\epsilon>0$, initial state $x^{(0)}$, steps $T$
+    \For{$t=0,1,\dots,T-1$}
+      \State Draw $\xi\sim\mathcal{N}(0,I_d)$ and set $y \gets x^{(t)}-\epsilon\nabla U(x^{(t)})+\sqrt{2\epsilon}\,\xi$.
+      \State Compute $\log r\bigl(x^{(t)},y\bigr)$ from \eqref{eq:mala-log-ratio} and draw $u\sim\mathrm{Unif}(0,1)$.
+      \If{$\log u \le \min\{0,\log r\bigl(x^{(t)},y\bigr)\}$}
+        \State $x^{(t+1)} \gets y$
+      \Else
+        \State $x^{(t+1)} \gets x^{(t)}$
+      \EndIf
+    \EndFor
+    \State \Return $x^{(0)},x^{(1)},\dots,x^{(T)}$
+  \end{algorithmic}
+\end{algorithm}
+
+\begin{figure}[t]
+  \centering
+  \input{figures/main_notes/sampling/fig_mala_proposal_geometry}
+  \caption{Schematic comparison of a random-walk Gaussian proposal (dashed) and a Langevin proposal (solid).
+  The Langevin proposal shifts the mean by $-\epsilon\nabla U(x)$, biasing proposals toward higher-density regions.}
+  \label{fig:mala-proposal-geometry}
+\end{figure}
+
+Neal's discussion of the Langevin method makes the connection to HMC explicit: one leapfrog step of Hamiltonian Monte Carlo, followed by a Metropolis correction, is exactly a Langevin proposal of this form; see \citet[\S5.2]{neal_2011_hmc}.
+From that augmented-state viewpoint, MALA is the one-step overdamped relative of HMC.
+HMC keeps the gradient information but carries momentum over many leapfrog steps, which suppresses the random-walk behavior that remains when every move is only a local Langevin correction.
+NUTS then replaces the hand-tuned trajectory length by the no-U-turn stopping rule; see \citet[\S3.1]{hoffman_gelman_2014_nuts} and \Cref{subsec:hmc,subsec:nuts}.
+This is the main conceptual bridge: ULA and MALA already show how gradients tilt local proposals, while HMC and NUTS show how augmentation converts that same local information into long coherent trajectories.
+
+In large-data problems, evaluating the full gradient can dominate the cost of each step.
+If
+\[
+  U(x)=\sum_{i=1}^N u_i(x),
+\]
+then stochastic gradient Langevin dynamics (SGLD) replaces the exact gradient by a mini-batch estimate; this is the large-data variant introduced by \citet[\S3]{welling_teh_2011_sgld}.
+With batch size $B$, draw indices $i_1,\dots,i_B$ uniformly and define
+\[
+  \hat{\nabla U}(x)
+  \coloneqq
+  \frac{N}{B}\sum_{b=1}^B \nabla u_{i_b}(x).
+\]
+The update becomes
+\begin{equation}
+  x_{t+1}
+  =
+  x_t - \epsilon_t\hat{\nabla U}(x_t) + \sqrt{2\epsilon_t}\,\xi_{t+1},
+  \qquad
+  \xi_{t+1}\sim\mathcal{N}(0,I_d),
+  \label{eq:sgld-update}
+\end{equation}
+with a user-chosen step-size schedule $(\epsilon_t)$.
+If we write
+\[
+  \hat{\nabla U}(x_t)=\nabla U(x_t)+\eta_t,
+  \qquad
+  \E[\eta_t\mid x_t]=0,
+\]
+then
+\begin{equation}
+  x_{t+1}
+  =
+  x_t - \epsilon_t\nabla U(x_t) + \sqrt{2\epsilon_t}\,\xi_{t+1} - \epsilon_t\eta_t.
+  \label{eq:sgld-two-noises}
+\end{equation}
+Equation \eqref{eq:sgld-two-noises} makes the approximation explicit: besides the calibrated Langevin noise, SGLD contains extra noise from subsampling.
+For very small step sizes that additional term becomes negligible, but at practical step sizes it can substantially change the stationary behavior.
+SGLD is therefore best understood as an approximate large-scale sampler whose per-iteration cost is cheap precisely because it gives up the exact invariance enjoyed by MALA.
+
+Two operating regimes are worth separating.
+If asymptotic exactness matters, then one uses a decreasing schedule with \(\sum_t \epsilon_t=\infty\) and \(\sum_t \epsilon_t^2<\infty\), so the Euler bias and the mini-batch perturbation are both annealed away over time.
+This is the regime analyzed in the original SGLD paper \citep[\S3]{welling_teh_2011_sgld}.
+In large-scale practice, however, fixed or slowly decaying step sizes are more common because they mix faster per unit gradient cost; the price is that the chain then settles near a biased limiting distribution, just as ULA does; see \citet[\S4.1]{welling_teh_2011_sgld} for the corresponding practical discussion of the transition into the Langevin phase.
+This is why practitioners often use larger step sizes during early exploration or warm-up and smaller ones when collecting approximate posterior draws.
+
+The batch size must be chosen jointly with the step size.
+The stochastic-gradient perturbation in \eqref{eq:sgld-two-noises} enters at scale \(\epsilon_t\eta_t\), whereas the calibrated Langevin perturbation enters at scale \(\sqrt{\epsilon_t}\,\xi_{t+1}\).
+Under sampling with replacement, the covariance of the gradient-estimation error typically scales like \(N^2\Sigma(x_t)/B\) for a suitable per-datum covariance matrix \(\Sigma(x_t)\).
+Consequently the extra SGLD perturbation has covariance on the order of \(\epsilon_t^2 N^2\Sigma(x_t)/B\), whereas the injected Langevin noise has covariance \(2\epsilon_t I_d\).
+Thus very noisy mini-batches can dominate the intended diffusion unless \(\epsilon_t\) is small enough or \(B\) is large enough.
+A practical rule is to choose \(B\) so that the mini-batch term is a correction to the Gaussian noise rather than the main source of randomness once the chain is near stationarity; if one increases \(\epsilon_t\), one usually has to increase \(B\) as well.
+This is why SGLD often uses rougher settings only for early exploration, then reduces the step size and often enlarges the batch size before collecting approximate posterior draws.
+In practice it is useful to calibrate this near a high-density point rather than in the tails.
+A short pilot run can estimate the scale of the mini-batch gradient error, and the diagnostic question is simple: is the extra perturbation \(\epsilon_t^2\operatorname{Var}(\eta_t\mid x_t)\) comfortably smaller than the injected Langevin variance \(2\epsilon_t I_d\)?
+If not, one should shrink \(\epsilon_t\), increase \(B\), or both.
+Batch sizes in the same rough range used in stochastic optimization are a common starting point, but stability checks across several \((B,\epsilon)\) pairs are more informative than trusting one nominal default; this is exactly the kind of schedule-versus-noise calibration emphasized by \citet[\S4]{welling_teh_2011_sgld}.
+Comparing posterior histograms or summary estimates across those settings is often the quickest way to tell whether the stochastic-gradient noise is dominating the intended diffusion.
+
+At a high level, the tradeoffs are now visible.
+ULA is the cheapest gradient-based method but carries step-size bias, MALA removes that bias with an accept/reject step, SGLD trades exactness for mini-batch scalability, and HMC or NUTS spend full gradients to convert the same local information into much longer coherent trajectories.
+Equivalently, ULA and fixed-step SGLD buy cheaper iterations by tolerating an \(\epsilon\)-dependent limiting law, whereas MALA, HMC, and NUTS spend extra work per iteration to keep the exact target invariant.
+
+All of these gradient-based samplers inherit the transformed-density bookkeeping from \Cref{subsubsec:transformed-densities}.
+If the computation runs on unconstrained coordinates $z$, then both the potential $U(z)$ and its gradient must include the Jacobian contribution from the change of variables.
+Otherwise the sampler follows the right local geometry for the wrong target distribution.

@@ -1,0 +1,392 @@
+\subsubsection{Metropolis--Hastings}
+\label{subsec:mh}
+
+Metropolis--Hastings turns an easy-to-simulate proposal kernel into an MCMC kernel that leaves a target distribution $\pi$ invariant.
+The key correction is an accept/reject step that enforces detailed balance, so the method still works when $\pi$ is known only up to a normalizing constant.
+See \citet[\S5.1--\S5.2]{liu_2002_monte_carlo}.
+
+Let the target density on $\mathcal{X}=\R^d$ be
+\[
+  \pi(x)=\frac{\tilde\pi(x)}{Z},
+  \qquad
+  Z=\int_{\R^d}\tilde\pi(x)\,dx.
+\]
+Let $Q(x,\cdot)$ be a proposal kernel with density $q(y\mid x)$.
+Given the current state $x$, we draw $Y\sim Q(x,\cdot)$ and accept the proposal with probability
+\begin{equation}
+  \alpha(x,y)
+  \coloneqq
+  \min\!\left\{1,\ \frac{\tilde\pi(y)\,q(x\mid y)}{\tilde\pi(x)\,q(y\mid x)}\right\}.
+  \label{eq:mh-accept-prob}
+\end{equation}
+Because \eqref{eq:mh-accept-prob} only involves a ratio of unnormalized target values, the unknown constant $Z$ cancels.
+The resulting Markov kernel is
+\begin{equation}
+  K_{\mathrm{MH}}(x,A)
+  =
+  \int_A q(y\mid x)\alpha(x,y)\,dy
+  + \1\{x\in A\}\left(1-\int_{\R^d} q(z\mid x)\alpha(x,z)\,dz\right).
+  \label{eq:mh-kernel}
+\end{equation}
+The first term moves to an accepted proposal in $A$, while the second term is the probability of rejecting and staying at $x$.
+\Cref{fig:mh-kernel} sketches this move-or-stay structure.
+
+\begin{algorithm}[t]
+  \caption{Metropolis--Hastings}
+  \label{alg:metropolis-hastings}
+  \begin{algorithmic}[1]
+    \Require Unnormalized target $\tilde\pi(x)$, proposal density $q(y\mid x)$, initial state $x^{(0)}$, steps $T$
+    \For{$t=0,1,\dots,T-1$}
+      \State Draw proposal $y \sim q(\cdot\mid x^{(t)})$ and $u\sim \mathrm{Unif}(0,1)$.
+      \State Compute $\alpha\bigl(x^{(t)},y\bigr)$ from \eqref{eq:mh-accept-prob}.
+      \If{$u \le \alpha\bigl(x^{(t)},y\bigr)$}
+        \State $x^{(t+1)} \gets y$
+      \Else
+        \State $x^{(t+1)} \gets x^{(t)}$
+      \EndIf
+    \EndFor
+    \State \Return $x^{(0)},x^{(1)},\dots,x^{(T)}$
+  \end{algorithmic}
+\end{algorithm}
+
+\begin{figure}[t]
+  \centering
+  \input{figures/main_notes/sampling/fig_mh_kernel}
+  \caption{Schematic form of a Metropolis--Hastings step.
+  A proposal $y\sim q(\cdot\mid x)$ is accepted with probability $\alpha(x,y)$; otherwise the chain stays at $x$.}
+  \label{fig:mh-kernel}
+\end{figure}
+
+\begin{proposition}[Metropolis--Hastings satisfies detailed balance]
+\label{prop:mh-detailed-balance}
+The kernel $K_{\mathrm{MH}}$ in \eqref{eq:mh-kernel} is reversible with respect to $\pi$.
+In particular, $\pi$ is invariant for $K_{\mathrm{MH}}$.
+\end{proposition}
+\begin{proof}
+Define
+\[
+  r(x,y)\coloneqq \frac{\tilde\pi(y)\,q(x\mid y)}{\tilde\pi(x)\,q(y\mid x)},
+  \qquad
+  \alpha(x,y)=\min\{1,r(x,y)\}.
+\]
+Then
+\[
+  \tilde\pi(x)\,q(y\mid x)\alpha(x,y)
+  =
+  \min\!\bigl\{\tilde\pi(x)\,q(y\mid x),\tilde\pi(y)\,q(x\mid y)\bigr\}
+  =
+  \tilde\pi(y)\,q(x\mid y)\alpha(y,x).
+\]
+Dividing by $Z$ gives
+\[
+  \pi(x)\,q(y\mid x)\alpha(x,y)
+  =
+  \pi(y)\,q(x\mid y)\alpha(y,x).
+\]
+Integrating this identity over $x\in A$ and $y\in B$ yields detailed balance for the move part of \eqref{eq:mh-kernel}, and the reject-and-stay mass preserves the same symmetry.
+\end{proof}
+
+For implementation, the stable quantity is the log ratio rather than the ratio itself.
+As in \Cref{subsubsec:working-on-log-scale}, it is usually safest to compute
+\[
+  \log r(x,y)
+  =
+  \log \tilde\pi(y)-\log \tilde\pi(x)+\log q(x\mid y)-\log q(y\mid x)
+\]
+and accept whenever $\log u \le \min\{0,\log r(x,y)\}$.
+The same change-of-variables bookkeeping from \Cref{subsubsec:transformed-densities} applies when the chain is run in unconstrained coordinates.
+If $x=T(z)$ is a smooth bijection and we sample on the $z$ scale, then the unnormalized target becomes
+\begin{equation}
+  \tilde\pi_Z(z)
+  =
+  \tilde\pi_X\!\bigl(T(z)\bigr)\,\lvert\det J_T(z)\rvert,
+  \qquad
+  \log \tilde\pi_Z(z)
+  =
+  \log \tilde\pi_X\!\bigl(T(z)\bigr)+\log\lvert\det J_T(z)\rvert.
+  \label{eq:mh-transformed-target}
+\end{equation}
+Equation \eqref{eq:mh-accept-prob} must then be applied with $\tilde\pi_Z$, not with the original density in the constrained coordinates.
+Otherwise the sampler targets the wrong distribution even if every proposal is accepted or rejected correctly on its own computational scale.
+
+Proposal design is the real modeling choice inside Metropolis--Hastings.
+The accept/reject step guarantees the correct stationary law, but the proposal kernel determines whether the chain moves coherently through the typical set or wastes most iterations on rejected or highly correlated proposals.
+Recording the acceptance rate is therefore useful, since it gives a quick indication of whether the proposal is too conservative or too aggressive; see \citet[\S5.8]{liu_2002_monte_carlo}.
+
+A standard choice is random-walk Metropolis:
+\[
+  Y = x + \varepsilon,
+  \qquad
+  \varepsilon \sim g,
+\]
+with proposal density $q(y\mid x)=g(y-x)$.
+If $g$ is symmetric, then the proposal terms cancel and \eqref{eq:mh-accept-prob} simplifies to
+\[
+  \alpha(x,y)=\min\!\left\{1,\frac{\tilde\pi(y)}{\tilde\pi(x)}\right\}.
+\]
+See \citet[\S5.4.1]{liu_2002_monte_carlo}.
+The method is simple, but the same local scale must serve every direction.
+If the steps are too small, acceptance is high but autocorrelation remains large; if the steps are too large, most proposals land in low-density regions and are rejected.
+In practice one tunes the proposal scale by monitoring both acceptance and the resulting effective sample size (\Cref{subsubsec:ess}).
+
+Random-walk Metropolis theory is driven by a simple geometric theme.
+The proposal must have genuine local support, and the target must not force the chain through increasingly thin bottlenecks in the tails.
+Those hypotheses appear in many theorem-level conditions with different technical wrappers, but the practical message is the same:
+random-walk proposals work best when the level sets are reasonably regular and when no direction becomes arbitrarily harder to traverse than the others.
+This is also why detailed balance, by itself, is not enough.
+It guarantees the correct stationary law, but it does not guarantee a usable convergence rate.
+Targets with heavy tails, strong anisotropy, or narrow tail funnels can all make a perfectly correct random walk mix very poorly.
+
+A practical workflow is to tune the proposal in stages rather than hoping one scale works everywhere.
+One usually starts with an isotropic Gaussian proposal,
+\[
+  Y \sim \mathcal{N}(x,\sigma^2 I_d),
+\]
+with $\sigma^2=2.4^2/d$ as a common default scale,
+runs a short pilot chain, discards warm-up, and uses the retained draws to estimate both an acceptance rate and a pilot covariance.
+As a rough diagnostic, acceptance rates around $50\%$ in one dimension and around $25\%$ in higher-dimensional problems are often reasonable starting points.
+If the observed acceptance rate is too small, the proposal scale should be shrunk; if it is too large, the scale can be increased.
+When the pilot draws reveal strong anisotropy, a better next proposal is
+\[
+  Y \sim \mathcal{N}\!\left(x,\frac{1}{d}\hat\Sigma\right),
+\]
+where $\hat\Sigma$ is the empirical covariance from the pilot run.
+The right pattern is then \emph{pilot run $\to$ estimate covariance $\to$ restart the chain with the new proposal}, repeating until the mixing behavior is acceptable.
+
+This workflow also explains why reparameterization is often more valuable than endless scalar tuning.
+If the negative log density is ill-conditioned, isotropic random walks face the same steep-versus-flat tradeoff as gradient descent: a small step size is needed to avoid rejection in stiff directions, while a large step size is needed to move in flat directions.
+Rescaling or whitening the parameters, choosing a proposal that respects constraints, or moving to unconstrained coordinates via \Cref{subsubsec:transformed-densities}, can turn a badly tuned random walk into a workable one.
+One should not adapt $\hat\Sigma$ indefinitely inside the main run without care, since that makes the transition rule depend on the past and therefore breaks the simple Markov-chain analysis unless one uses a genuine adaptive-MCMC scheme.
+
+Another useful family is the independence proposal, where $q(y\mid x)=g(y)$ does not depend on the current state.
+Then
+\[
+  \alpha(x,y)
+  =
+  \min\!\left\{1,\frac{\tilde\pi(y)\,g(x)}{\tilde\pi(x)\,g(y)}\right\}.
+\]
+See \citet[\S5.4.2]{liu_2002_monte_carlo}.
+Independence proposals can mix quickly when $g$ already approximates $\pi$ well, but they fail for exactly the same reason that importance sampling fails: if $g$ misses important modes or has lighter tails than $\pi$, the correction weights become extreme and accepted moves are rare.
+
+\subsubsection{Gibbs sampling}
+\label{subsec:gibbs}
+
+Gibbs sampling updates one block of variables at a time by drawing from the corresponding full conditional distribution.
+It is most attractive when those conditionals are available in closed form, often because of conjugacy or simple Gaussian structure.
+See \citet[\S6.1]{liu_2002_monte_carlo}.
+
+Let $X=(X_1,\dots,X_d)$ have target density $\pi$ on $\R^d$.
+For each coordinate $i$, write $x_{-i}$ for the vector of all coordinates except $x_i$.
+The full conditional density of $X_i$ given $X_{-i}=x_{-i}$ is
+\[
+  \pi(x_i\mid x_{-i}) \propto \pi(x_1,\dots,x_d),
+\]
+viewed as a function of $x_i$ with $x_{-i}$ fixed.
+If $\pi(x)\propto \tilde\pi(x)$ is known only up to a global normalizing constant, that constant cancels inside the conditional as well.
+Gibbs sampling is therefore a natural choice when conditional sampling is easy even though direct sampling from $\pi$ is not.
+
+The systematic-scan Gibbs sampler cycles through the coordinates and redraws each one from its full conditional:
+\begin{algorithm}[t]
+  \caption{Systematic-scan Gibbs sampler}
+  \label{alg:gibbs}
+  \begin{algorithmic}[1]
+    \Require Target density $\pi(x_1,\dots,x_d)$ up to normalization, initial state $x^{(0)}$, sweeps $T$
+    \For{$t=0,1,\dots,T-1$}
+      \For{$i=1,2,\dots,d$}
+        \State Sample $x^{(t+1)}_i \sim \pi(\cdot \mid x^{(t+1)}_1,\dots,x^{(t+1)}_{i-1},x^{(t)}_{i+1},\dots,x^{(t)}_d)$.
+      \EndFor
+    \EndFor
+    \State \Return $\{x^{(t)}\}_{t=0}^T$
+  \end{algorithmic}
+\end{algorithm}
+Within one sweep, the already updated coordinates use their time-$(t+1)$ values while the remaining coordinates stay at time $t$.
+In two dimensions this means alternating horizontal and vertical moves through the level sets of the target; \Cref{fig:gibbs-2d-geometry} shows the basic geometry for a correlated Gaussian.
+The random-scan version uses different bookkeeping: at step $t$, draw an index $I_t\in\{1,\dots,d\}$ from probabilities $(w_1,\dots,w_d)$, update only coordinate $I_t$ from its full conditional, and leave all other coordinates unchanged.
+If $K_i$ denotes the kernel that refreshes coordinate $i$, then one random-scan step has kernel
+\[
+  K_{\mathrm{RS}} = \sum_{i=1}^d w_i K_i,
+\]
+while one systematic sweep has kernel
+\[
+  K_{\mathrm{SS}} = K_d \cdots K_2 K_1.
+\]
+Both target the same invariant law $\pi$, but they produce different short-lag dependence and different notions of what counts as ``one iteration'' in practice.
+Their convergence behavior can nevertheless be dramatically different: strong posterior dependence can make successive coordinate refreshes nearly deterministic, while sensible blocking can make a full sweep behave much more like an independent refresh.
+That is why blocking matters so much:
+the more nearly a full sweep behaves like a sequence of weakly correlated refreshes, the closer the chain moves toward i.i.d.\ behavior.
+
+\begin{figure}[t]
+  \centering
+  \input{figures/main_notes/sampling/fig_gibbs_2d_geometry}
+  \caption{Geometry of a two-coordinate Gibbs sampler.
+  The blue ellipses are level sets of a correlated Gaussian target.
+  A Gibbs sweep alternates between sampling $x_1\mid x_2$ (red horizontal moves) and sampling $x_2\mid x_1$ (teal vertical moves).}
+  \label{fig:gibbs-2d-geometry}
+\end{figure}
+
+\begin{proposition}[A Gibbs coordinate update leaves $\pi$ invariant]
+\label{prop:gibbs-invariant}
+Fix $i\in\{1,\dots,d\}$ and consider the kernel $K_i$ that maps $x=(x_i,x_{-i})$ to $(x_i',x_{-i})$ with $x_i'\sim \pi(\cdot\mid x_{-i})$.
+Then $\pi$ is invariant for $K_i$.
+Consequently, both systematic-scan Gibbs (\Cref{alg:gibbs}) and random-scan Gibbs have invariant distribution $\pi$.
+\end{proposition}
+\begin{proof}
+Let $f$ be bounded and measurable.
+By definition of $K_i$,
+\[
+  (K_if)(x_i,x_{-i})=\int f(x_i',x_{-i})\,\pi(x_i'\mid x_{-i})\,dx_i'.
+\]
+Integrating against $\pi(x_i,x_{-i})=\pi(x_i\mid x_{-i})\pi(x_{-i})$ gives
+\begin{align*}
+  \int (K_if)(x)\,\pi(x)\,dx
+  &=
+  \int \left[\int f(x_i',x_{-i})\,\pi(x_i'\mid x_{-i})\,dx_i'\right]\pi(x_i\mid x_{-i})\pi(x_{-i})\,dx_i\,dx_{-i}\\
+  &=
+  \int f(x_i',x_{-i})\,\pi(x_i'\mid x_{-i})\pi(x_{-i})\,dx_i'\,dx_{-i}\\
+  &=
+  \int f(x)\,\pi(x)\,dx.
+\end{align*}
+\end{proof}
+
+Gibbs updates can be read as a special Metropolis--Hastings proposal that is always accepted.
+If we update coordinate $i$ by proposing $y=(y_i,x_{-i})$ with $y_i\sim \pi(\cdot\mid x_{-i})$, then
+\[
+  q(y\mid x)=\pi(y_i\mid x_{-i}),
+  \qquad
+  q(x\mid y)=\pi(x_i\mid x_{-i}),
+\]
+and the Hastings ratio equals $1$ because each conditional is proportional to the corresponding slice of $\tilde\pi$.
+This viewpoint motivates Metropolis-within-Gibbs: when one full conditional is unavailable, we can still update that block with an MH step targeting the conditional while holding the other coordinates fixed; see \citet[\S6.3.2]{liu_2002_monte_carlo}.
+
+\begin{example}[Correlated Gaussian Gibbs mixing]
+\label{subsubsec:gibbs-bivar-normal}
+Let $(X_1,X_2)\sim \mathcal{N}(0,\Sigma)$ with
+\[
+  \Sigma=\begin{pmatrix}
+    1 & \rho\\
+    \rho & 1
+  \end{pmatrix},
+  \qquad |\rho|<1.
+\]
+Then
+\[
+  X_1\mid X_2=x_2 \sim \mathcal{N}\!\left(\rho x_2,\ 1-\rho^2\right),
+  \qquad
+  X_2\mid X_1=x_1 \sim \mathcal{N}\!\left(\rho x_1,\ 1-\rho^2\right).
+\]
+When $|\rho|$ is close to $1$, the conditional variance $1-\rho^2$ is small, so each update makes only a short axis-aligned move.
+Geometrically, the chain traces a staircase path along the narrow ridge of the target instead of moving directly along that ridge.
+If we record $X_1$ after each full sweep, the resulting marginal chain is
+\[
+  X_{1,t+1} = \rho^2 X_{1,t} + \sqrt{1-\rho^4}\,\varepsilon_{t+1},
+  \qquad \varepsilon_t \overset{\mathrm{i.i.d.}}{\sim} \mathcal{N}(0,1),
+\]
+so the lag-$k$ autocorrelation is $(\rho^2)^k$.
+Thus, as $|\rho|\to 1$, successive Gibbs iterates become highly correlated and the effective sample size decays (cf.\ \Cref{subsubsec:ess}).
+\end{example}
+
+This Gaussian example is the right template for thinking about Gibbs more generally.
+The acceptance rate is always $1$, so the main efficiency question is not acceptance but autocorrelation.
+When strongly coupled variables are updated one at a time, the chain can only move through the posterior by a sequence of short axis-aligned corrections.
+
+\begin{example}[Hierarchical Gibbs sampler and why blocking helps]
+\label{ex:hierarchical-gibbs-blocking}
+Suppose grouped data $Y_{ij}$ are modeled by
+\[
+  Y_{ij}\mid \alpha_j,\sigma^2 \sim \mathcal{N}(\alpha_j,\sigma^2),
+  \qquad
+  \alpha_j\mid \mu,\tau^2 \sim \mathcal{N}(\mu,\tau^2),
+\]
+for groups $j=1,\dots,J$ and observations $i=1,\dots,n_j$.
+Give the hyperparameters the conjugate priors
+\[
+  \mu \sim \mathcal{N}(m_0,s_0^2),
+  \qquad
+  \sigma^2 \sim \mathrm{InvGamma}(a_\sigma,b_\sigma),
+  \qquad
+  \tau^2 \sim \mathrm{InvGamma}(a_\tau,b_\tau).
+\]
+Writing
+\[
+  \bar Y_j\coloneqq \frac{1}{n_j}\sum_{i=1}^{n_j}Y_{ij},
+  \qquad
+  S_j\coloneqq \sum_{i=1}^{n_j}(Y_{ij}-\bar Y_j)^2,
+\]
+the full conditionals are
+\[
+  \alpha_j \mid \mu,\tau^2,\sigma^2,Y
+  \sim
+  \mathcal{N}\!\left(
+    \frac{n_j\bar Y_j/\sigma^2+\mu/\tau^2}{n_j/\sigma^2+1/\tau^2},
+    \frac{1}{n_j/\sigma^2+1/\tau^2}
+  \right),
+\]
+\[
+  \mu \mid \alpha,\tau^2,Y
+  \sim
+  \mathcal{N}\!\left(
+    \frac{m_0/s_0^2+\sum_{j=1}^J \alpha_j/\tau^2}{1/s_0^2+J/\tau^2},
+    \frac{1}{1/s_0^2+J/\tau^2}
+  \right),
+\]
+\[
+  \sigma^2 \mid \alpha,\mu,\tau^2,Y
+  \sim
+  \mathrm{InvGamma}\!\left(
+    a_\sigma+\frac12\sum_{j=1}^J n_j,
+    b_\sigma+\frac12\sum_{j=1}^J\Bigl[S_j+n_j(\bar Y_j-\alpha_j)^2\Bigr]
+  \right),
+\]
+and
+\[
+  \tau^2 \mid \alpha,\mu,\sigma^2,Y
+  \sim
+  \mathrm{InvGamma}\!\left(
+    a_\tau+\frac{J}{2},
+    b_\tau+\frac12\sum_{j=1}^J (\alpha_j-\mu)^2
+  \right).
+\]
+A straightforward Gibbs sampler updates $\alpha_1,\dots,\alpha_J$, then $\mu$, then $\sigma^2$, then $\tau^2$ one at a time.
+That sampler is easy to code, but it can mix poorly because the group means $\alpha_j$, the global mean $\mu$, and the between-group scale $\tau^2$ are strongly correlated in the posterior.
+Each single-site update moves only a little, and the chain spends many sweeps walking back and forth along the same posterior ridge.
+This is especially visible when the groups are weakly informed, for example when each $n_j$ is small, because then the posterior coupling between $\mu$ and the $\alpha_j$ remains strong and autocorrelations decay slowly.
+
+If we collect the Gaussian variables into one block,
+\[
+  \theta \coloneqq (\mu,\alpha_1,\dots,\alpha_J),
+\]
+then $\theta\mid \tau^2,\sigma^2,Y$ is jointly Gaussian with analytically available mean and covariance.
+In matrix form, this block conditional can be written as
+\[
+  \theta \mid \tau^2,\sigma^2,Y
+  \sim
+  \mathcal{N}(Q^{-1}b,Q^{-1}),
+\]
+where
+\[
+  Q
+  =
+  \begin{bmatrix}
+    s_0^{-2}+J\tau^{-2} & -\tau^{-2}\1_J^\top \\
+    -\tau^{-2}\1_J & \tau^{-2}I_J+\sigma^{-2}\operatorname{diag}(n_1,\dots,n_J)
+  \end{bmatrix},
+  \qquad
+  b
+  =
+  \begin{bmatrix}
+    m_0/s_0^2 \\
+    \sigma^{-2}n_1\bar Y_1 \\
+    \vdots \\
+    \sigma^{-2}n_J\bar Y_J
+  \end{bmatrix}.
+\]
+We can therefore replace many correlated one-dimensional Gaussian updates by a single multivariate draw for $\theta$, followed by the inverse-gamma draws for $\sigma^2$ and $\tau^2$.
+This blocked Gibbs step moves in the correlated directions all at once, so the lag-one autocorrelation drops sharply.
+In practice the blocked chain is often much closer to an i.i.d.\ sequence in its autocorrelation plot, and the resulting Monte Carlo variance for estimating quantities such as \(\E[\mu\mid Y]\) is correspondingly smaller than for the one-at-a-time Gibbs chain.
+\end{example}
+
+The lesson is not merely ``use bigger blocks.''
+The real principle is to block together variables that are strongly coupled \emph{when the joint conditional is still easy to sample}.
+Blocking is worthwhile precisely because it attacks autocorrelation at its source.
+State augmentation is another way to create such tractable blocks: introducing latent variables can turn an awkward marginal problem into a sequence of easy conditional updates.
+If a clean joint conditional is still unavailable, then the next best option is often Metropolis-within-Gibbs: use exact Gibbs updates on the tractable blocks and an MH step on the rest.

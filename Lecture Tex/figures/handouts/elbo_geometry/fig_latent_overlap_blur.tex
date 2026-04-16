@@ -1,0 +1,65 @@
+\begin{tikzpicture}[>=Stealth,font=\footnotesize]
+  \tikzset{
+    elbopanel/.style={
+      draw=stat221Gray!30,
+      fill=white,
+      rounded corners=5pt,
+      line width=0.6pt
+    },
+    elbotitle/.style={font=\small\bfseries, text=stat221Gray!90},
+    samplebox/.style={
+      rounded corners=3pt,
+      minimum width=1.6cm,
+      minimum height=0.85cm,
+      line width=0.8pt
+    },
+    elbobadge/.style={
+      rounded corners=2pt,
+      inner sep=2.5pt,
+      font=\scriptsize,
+      text=stat221Gray!85
+    }
+  }
+  \path[use as bounding box] (-0.15,-0.25) rectangle (13.3,4.95);
+
+  \node[elbopanel,minimum width=3.85cm,minimum height=4.35cm,anchor=north west] (leftpanel) at (0.0,4.65) {};
+  \node[elbopanel,minimum width=4.35cm,minimum height=4.35cm,anchor=north west] (midpanel) at (4.45,4.65) {};
+  \node[elbopanel,minimum width=3.85cm,minimum height=4.35cm,anchor=north west] (rightpanel) at (9.45,4.65) {};
+
+  \node[elbotitle,anchor=north west] at ([xshift=0.25cm,yshift=-0.25cm]leftpanel.north west) {Distinct observations};
+  \node[elbotitle,anchor=north west] at ([xshift=0.25cm,yshift=-0.25cm]midpanel.north west) {Encoder overlap};
+  \node[elbotitle,anchor=north west] at ([xshift=0.25cm,yshift=-0.25cm]rightpanel.north west) {Best Gaussian decoder};
+
+  \node[samplebox,draw=stat221Blue!72!black,fill=stat221BlueLight] (x1) at (1.90,2.95) {$x^{(1)}$};
+  \node[samplebox,draw=stat221Green!68!black,fill=stat221GreenLight] (x2) at (1.90,1.25) {$x^{(2)}$};
+  \node[elbobadge,fill=stat221Gray!8,anchor=north] at (1.90,0.45) {different data points};
+
+  \begin{scope}[shift={(6.62,2.05)}]
+    \draw[->,stat221Gray!70,line width=0.5pt] (-1.45,0) -- (1.55,0);
+    \draw[->,stat221Gray!70,line width=0.5pt] (0,-1.20) -- (0,1.50);
+    \node[stat221Gray!70,anchor=west] at (1.55,-0.10) {$z_1$};
+    \node[stat221Gray!70,anchor=south] at (-0.08,1.50) {$z_2$};
+    \fill[stat221Orange!18] (0.04,0.02) circle (0.26);
+    \fill[stat221Blue!18] (-0.08,0.06) ellipse (0.88 and 0.48);
+    \fill[stat221Green!18] (0.10,-0.04) ellipse (0.88 and 0.48);
+    \draw[stat221Blue!72!black,line width=0.9pt] (-0.08,0.06) ellipse (0.88 and 0.48);
+    \draw[stat221Green!68!black,line width=0.9pt] (0.10,-0.04) ellipse (0.88 and 0.48);
+    \node[elbobadge,fill=stat221OrangeLight,anchor=north] at (0,-0.95) {same latent neighborhood};
+  \end{scope}
+
+  \node[samplebox,draw=stat221Blue!45!black,fill=stat221BlueLight,fill opacity=0.55,text opacity=1] (y1) at (11.35,3.00) {$x^{(1)}$};
+  \node[samplebox,draw=stat221Green!45!black,fill=stat221GreenLight,fill opacity=0.55,text opacity=1] (y2) at (11.35,1.20) {$x^{(2)}$};
+  \node[
+    samplebox,
+    draw=stat221Orange!78!black,
+    fill=stat221OrangeLight,
+    minimum width=2.15cm
+  ] (mu) at (11.35,2.10) {$\mu_\theta(z)$};
+  \draw[stat221Gray!55,dashed,line width=0.8pt] (y1.south) -- (mu.north);
+  \draw[stat221Gray!55,dashed,line width=0.8pt] (y2.north) -- (mu.south);
+  \node[elbobadge,fill=stat221OrangeLight,anchor=north] at (11.35,0.45) {predicts the conditional mean};
+
+  \draw[->,stat221Gray!70,line width=0.95pt] (2.72,2.95) .. controls (3.40,2.95) and (4.70,2.55) .. (5.45,2.22);
+  \draw[->,stat221Gray!70,line width=0.95pt] (2.72,1.25) .. controls (3.40,1.25) and (4.70,1.65) .. (5.45,1.88);
+  \draw[->,stat221Gray!70,line width=0.95pt] (7.90,2.05) -- (9.15,2.05);
+\end{tikzpicture}

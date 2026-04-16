@@ -1,0 +1,46 @@
+\begin{tikzpicture}
+  % Choose an illustrative (non-quadratic) objective and a current iterate x_k.
+  \pgfmathsetmacro{\xk}{-0.6}
+  \pgfmathsetmacro{\fk}{(\xk)^4 + (\xk)^2 + 1}
+  \pgfmathsetmacro{\gk}{4*(\xk)^3 + 2*(\xk)}
+  \pgfmathsetmacro{\hk}{12*(\xk)^2 + 2}
+  \pgfmathsetmacro{\xkp}{\xk - \gk/\hk} % minimizer of the quadratic model (full Newton step)
+  \pgfmathsetmacro{\qkp}{\fk + \gk*(\xkp-\xk) + 0.5*\hk*(\xkp-\xk)^2}
+  \pgfmathsetmacro{\fkp}{(\xkp)^4 + (\xkp)^2 + 1}
+
+  \begin{axis}[
+    width=0.9\linewidth,
+    height=5.6cm,
+    xmin=-0.95, xmax=0.9,
+    ymin=0.95, ymax=3.0,
+    axis lines=left,
+    ticks=none,
+    xlabel={$x$},
+    ylabel={$f(x)$},
+    clip=false,
+  ]
+    % True objective (illustrative strongly convex curve).
+    \addplot[black,thick,domain=-0.95:0.9,samples=240] {x^4 + x^2 + 1.0};
+
+    % Quadratic model around x_k (second-order Taylor approximation):
+    %   q_k(x) = f(x_k) + f'(x_k)(x-x_k) + (1/2)f''(x_k)(x-x_k)^2.
+    \addplot[stat221Red,thick,domain=-0.95:0.35,samples=240]
+      {\fk + \gk*(x-\xk) + 0.5*\hk*(x-\xk)^2};
+
+    % Mark x_k on f and the quadratic-model minimizer x_{k+1} on both q_k and f.
+    \addplot[only marks,mark=*,mark size=1.6pt] coordinates {(\xk,\fk)};
+    \addplot[only marks,mark=*,mark size=1.8pt,stat221Red] coordinates {(\xkp,\qkp)};
+
+    \addplot[densely dashed,stat221Gray] coordinates {(\xk,0.95) (\xk,\fk)};
+    \addplot[densely dashed,stat221Gray] coordinates {(\xkp,0.95) (\xkp,\qkp)};
+
+    \node[anchor=north] at (axis cs:\xk,0.95) {$x_k$};
+    \node[anchor=north] at (axis cs:\xkp,0.95) {$x_{k+1}$};
+
+    \draw[-{Latex[length=3mm]},stat221Gray,thick]
+      (axis cs:\xk,1.05) -- (axis cs:\xkp,1.05);
+
+    \node[black,anchor=west] at (axis cs:0.72,2.2) {$f$};
+    \node[stat221Red,anchor=west] at (axis cs:0.10,2.55) {$q_k$ (quadratic model)};
+  \end{axis}
+\end{tikzpicture}

@@ -1,0 +1,36 @@
+\begin{tikzpicture}[>=Stealth]
+  \path[use as bounding box] (-3.0,-2.4) rectangle (11.2,3.35);
+
+  \begin{scope}[shift={(0,0)}]
+    \node[font=\footnotesize] at (0,3.05) {typical set in space};
+    \path[fill=stat221Blue!16, even odd rule] (0,0) circle (2.15) (0,0) circle (1.00);
+    \draw[stat221Gray!45,line width=0.5pt] (0,0) circle (0.45);
+    \draw[stat221Gray!45,line width=0.5pt] (0,0) circle (1.00);
+    \draw[stat221Gray!45,line width=0.5pt] (0,0) circle (1.55);
+    \draw[stat221Gray!45,line width=0.5pt] (0,0) circle (2.15);
+    \fill[stat221Red] (0,0) circle (1.2pt);
+    \node[stat221Red!75!black,font=\footnotesize,anchor=west] at (0.10,0.08) {mode};
+    \node[stat221Blue!70!black,font=\footnotesize,anchor=west] at (1.22,1.50) {typical set};
+  \end{scope}
+
+  \begin{scope}[shift={(5.4,0)}]
+    \node[font=\footnotesize] at (2.35,3.05) {density, volume, and mass};
+    \draw[->,stat221Gray!70,line width=0.45pt] (0,0) -- (4.8,0);
+    \draw[->,stat221Gray!70,line width=0.45pt] (0,0) -- (0,2.6);
+    \node[stat221Gray!70,font=\footnotesize,anchor=north] at (2.35,-0.15) {$r=\norm{x}$};
+
+    \fill[stat221Blue!12] (1.72,0) rectangle (3.08,2.45);
+
+    \draw[black!72,line width=1.0pt]
+      plot[smooth] coordinates {(0,2.20) (0.45,2.03) (0.95,1.68) (1.55,1.05) (2.05,0.62) (2.55,0.32) (3.15,0.15) (4.20,0.05)};
+    \draw[stat221Red!80!black,line width=1.0pt]
+      plot[smooth] coordinates {(0,0.02) (0.55,0.04) (1.05,0.11) (1.60,0.28) (2.10,0.62) (2.60,1.08) (3.10,1.62) (3.60,2.18) (4.15,2.52)};
+    \draw[stat221Blue!80!black,line width=1.1pt]
+      plot[smooth] coordinates {(0,0.00) (0.45,0.07) (0.95,0.26) (1.40,0.70) (1.75,1.22) (2.10,1.65) (2.45,1.83) (2.80,1.70) (3.20,1.25) (3.65,0.62) (4.10,0.16)};
+
+    \node[black!72,font=\footnotesize,anchor=west] at (2.72,0.36) {density};
+    \node[stat221Red!80!black,font=\footnotesize,anchor=west] at (3.15,2.18) {volume};
+    \node[stat221Blue!80!black,font=\footnotesize,anchor=west] at (2.28,1.92) {mass};
+    \node[stat221Blue!70!black,font=\footnotesize,anchor=west] at (1.82,2.30) {typical band};
+  \end{scope}
+\end{tikzpicture}

@@ -1,0 +1,148 @@
+\subsubsection{Multi-chain diagnostic workflow}
+\label{subsec:mcmc-diagnostics}
+
+In realistic problems we usually assess convergence and Monte Carlo accuracy from finite runs rather than from a closed-form mixing calculation.
+The standard workflow is concrete: run several chains from dispersed initial conditions, discard warm-up, choose a few scalar summaries \(h(X)\), and inspect trace plots, split-\(\hat R\), effective sample size, and interval estimates for those summaries.
+These diagnostics are tools for detecting pathologies rather than certificates that the chain has explored every region where \(\pi\) places mass.
+In particular, diagnostics only see the regions the chain has already visited, so a deceptive run can still miss an isolated mode or a narrow neck.
+This is why empirical checks complement, rather than replace, the structural arguments from the Markov-chain theory subsection; see \citet[\S2.2--\S2.3]{betancourt_2017_hmc_conceptual} for the conceptual role of diagnostics and \citet[\S1.1]{vehtari_gelman_simpson_carpenter_burkner_2021_rank_normalization} for the modern multi-chain workflow.
+
+The standard workflow is to run $C$ independent chains from dispersed initial conditions.
+For chain $c\in\{1,\dots,C\}$, run $b+m$ iterations, discard the first $b$ warm-up steps, and retain
+\[
+  X_{1,c},\dots,X_{m,c}\in\R^d.
+\]
+Diagnostics are then applied to scalar summaries of the state, such as a coordinate projection $h(x)=x_j$ or the log target $h(x)=\log \tilde\pi(x)$.
+Write
+\[
+  h_{i,c}\coloneqq h(X_{i,c}),
+  \qquad
+  i=1,\dots,m.
+\]
+For each summary $h$, it is useful to report the empirical mean and central intervals from the pooled post-warm-up draws, and then place beside them the Monte Carlo diagnostics for that same summary: split-$\hat R$, effective sample size, and often an autocorrelation plot.
+The interval summarizes uncertainty under the target distribution, while the diagnostics summarize how reliably the finite correlated simulation has estimated that uncertainty.
+
+In practice a simple routine works well:
+\begin{enumerate}[leftmargin=*,label=(\arabic*)]
+  \item Run multiple chains, often $C=4$, from dispersed initial conditions and use a conservative warm-up.
+  \item Inspect trace plots and pair plots for a few coordinates, transformed parameters, and the log target.
+  \item Compute split-$\hat R$ and effective sample size for each coordinate and for scientifically meaningful derived summaries.
+  \item If the diagnostics look good, extend the chains only to reduce Monte Carlo error.
+  \item If the diagnostics look bad, change the algorithm, the parameterization, or the initialization strategy rather than merely increasing $m$.
+\end{enumerate}
+
+Trace plots overlay $h_{i,c}$ against iteration $i$ for each chain.
+Well-mixed chains look like overlapping noisy bands with no visible trend, while poor mixing appears as drift, stickiness, long periods trapped in different regions, or chains that never overlap at all.
+Pair plots complement this one-dimensional view by revealing narrow ridges, strong correlations, and multimodality that make a sampler move slowly.
+\Cref{fig:mcmc-traceplots} sketches the most basic visual distinction.
+
+\begin{figure}[t]
+  \centering
+  \input{figures/main_notes/sampling/fig_mcmc_traceplots}
+  \caption{Schematic trace plots for four chains.
+  The left panel shows good mixing, with chains overlapping and no visible drift.
+  The right panel shows poor mixing, with chains stuck in different regions and slow trends that suggest non-stationarity.}
+  \label{fig:mcmc-traceplots}
+\end{figure}
+
+When diagnostics suggest poor mixing, the first response should not be to simply run longer.
+If the chain has trouble moving between regions of high probability, additional samples often repeat the same information.
+Common remedies include tuning proposal scales, improving warm-up and initializations, or reparameterizing the model so the sampler sees less extreme correlations and fewer funnel-like geometries.
+The next example is a canonical warning sign.
+
+\begin{example}[Neal's funnel]
+Let $y\sim \mathcal{N}(0,3^2)$ and, conditional on $y$, let $x\in\R^K$ have independent coordinates
+\[
+  x_j \mid y \sim \mathcal{N}\!\left(0,e^{y}\right),
+  \qquad
+  j=1,\dots,K.
+\]
+When $y$ is negative, the conditional variance $e^{y}$ is tiny and the mass in $x$ concentrates in a narrow neck near $0$.
+When $y$ is positive, the conditional variance is enormous and the mass spreads out.
+This creates the funnel-shaped geometry in \Cref{fig:neals-funnel}: generic local proposals must trade off moving through the neck against moving efficiently in the wide part of the state space.
+In practice the pathology shows up as poor trace plots, small effective sample sizes, and split-$\hat R$ values noticeably above $1$.
+
+A standard remedy is a non-centered parameterization.
+If we write $x=e^{y/2}z$ with $z\sim \mathcal{N}(0,I_K)$ independent of $y$, then the joint law of $(z,y)$ is a product of Gaussians and the narrow neck disappears.
+For hierarchical models, this often changes the sampler's geometry more than any tuning adjustment.
+\end{example}
+
+\begin{figure}[t]
+  \centering
+  \input{figures/main_notes/sampling/fig_neals_funnel}
+  \caption{Neal's funnel in the centered parameterization (left) and the corresponding non-centered reparameterization (right) for $K=1$.
+  In $(x,y)$ coordinates the density concentrates in a narrow neck when $y$ is negative, while spreading out rapidly when $y$ is positive.
+  Writing $x=e^{y/2}z$ yields independent $(z,y)$ and removes the funnel-shaped geometry.}
+  \label{fig:neals-funnel}
+\end{figure}
+
+\subsubsection{\texorpdfstring{Split-$\hat R$ and effective sample size}{Split-R-hat and effective sample size}}
+
+Once the multi-chain workflow is in place, two scalar diagnostics summarize the two questions from \Cref{subsec:ergodicity}: have the chains reached the same stationary regime, and how much Monte Carlo information remains after accounting for autocorrelation?
+The first question is addressed by split-$\hat R$ and the second by effective sample size; see \citet[\S2.2--\S2.3]{betancourt_2017_hmc_conceptual} for the conceptual interpretation and \citet[\S\S3.2--4.5]{vehtari_gelman_simpson_carpenter_burkner_2021_rank_normalization} for the refinements used in modern implementations.
+
+For each retained chain, define the within-chain mean and variance
+\[
+  \bar h_c \coloneqq \frac{1}{m}\sum_{i=1}^m h_{i,c},
+  \qquad
+  s_c^2 \coloneqq \frac{1}{m-1}\sum_{i=1}^m (h_{i,c}-\bar h_c)^2,
+\]
+and let $\bar h\coloneqq C^{-1}\sum_{c=1}^C \bar h_c$.
+The within-chain and between-chain variance estimates are
+\[
+  W \coloneqq \frac{1}{C}\sum_{c=1}^C s_c^2,
+  \qquad
+  B \coloneqq \frac{m}{C-1}\sum_{c=1}^C (\bar h_c-\bar h)^2.
+\]
+The classical potential scale reduction factor is
+\begin{equation}
+  \hat R
+  \coloneqq
+  \sqrt{\frac{\hat V}{W}},
+  \qquad
+  \hat V \coloneqq \frac{m-1}{m}\,W + \frac{1}{m}\,B.
+  \label{eq:rhat}
+\end{equation}
+If all chains are exploring the same stationary law, then $B$ and $W$ should be similar and $\hat R$ should be close to $1$.
+If different chains are still trapped in different regions, $B$ is inflated and $\hat R$ grows above $1$.
+
+In practice one usually computes the split version.
+Each chain is cut in half, the $2C$ half-chains are treated as separate chains of length $m/2$, and \eqref{eq:rhat} is applied to those half-chains.
+This makes the diagnostic sensitive to slow drifts that would be hidden if each chain were summarized only by its full-run mean.
+Values such as split-$\hat R\lesssim 1.01$ are common targets, but the threshold is not magic and should be read together with the trace plots rather than in isolation.
+Equation \eqref{eq:rhat} is the classical variance-ratio formula because it makes the idea transparent.
+In practice, implementations usually report the rank-normalized split-$\hat R$ together with bulk and tail ESS summaries, since those are more reliable for heavy-tailed or skewed posteriors; see \citet[\S\S4.1--4.5]{vehtari_gelman_simpson_carpenter_burkner_2021_rank_normalization}.
+
+Effective sample size measures the second question: once the chain has reached stationarity, how much Monte Carlo precision is lost to serial dependence?
+For each chain $c$, define the lag-$k$ sample autocovariance
+\[
+  \tilde\gamma_c(k)
+  \coloneqq
+  \frac{1}{m-k}\sum_{i=1}^{m-k}(h_{i,c}-\bar h_c)(h_{i+k,c}-\bar h_c),
+  \qquad
+  k=0,1,\dots,m-1,
+\]
+and the corresponding sample autocorrelation $\tilde\rho_c(k)\coloneqq \tilde\gamma_c(k)/\tilde\gamma_c(0)$.
+A simple multi-chain aggregate is
+\[
+  \tilde\rho(k)\coloneqq \frac{1}{C}\sum_{c=1}^C \tilde\rho_c(k).
+\]
+Two mundane implementation details are worth recording.
+Some software centers the lag products with the pooled mean over all chains rather than the within-chain mean \(\bar h_c\), and many implementations normalize the lag-\(k\) autocovariance by \(m\) rather than \(m-k\).
+Those choices introduce a small bias but can reduce variance in the very noisy large-lag regime.
+Large-lag estimates are noisy, so the usual practice is to truncate the sum once the estimated autocorrelations stop behaving like a decaying signal.
+One conservative rule is to choose the first lag $T$ with $\tilde\rho(T)<0$ and then define the variance-inflation estimate using only the preceding nonnegative lags:
+\begin{equation}
+  \hat\tau_{\mathrm{int}}
+  \coloneqq
+  1+2\sum_{k=1}^{T-1}\tilde\rho(k),
+  \qquad
+  \mathrm{ESS}
+  \coloneqq
+  \frac{mC}{\hat\tau_{\mathrm{int}}}.
+  \label{eq:ess-estimate}
+\end{equation}
+This is the empirical version of the integrated autocorrelation-time calculation from \Cref{subsubsec:ess}.
+More stable multi-chain ESS estimators combine this truncation idea with between-chain variance information; see \citet[App.~A]{hoffman_gelman_2014_nuts} and \citet[\S3.2]{vehtari_gelman_simpson_carpenter_burkner_2021_rank_normalization}.
+ESS is always summary-dependent: a sampler may mix rapidly for one coordinate and extremely slowly for another or for a nonlinear function of the state.
+That is why diagnostics should be reported for transformed parameters and scientifically relevant summaries, not only for the raw coordinates stored internally by the algorithm.

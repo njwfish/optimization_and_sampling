@@ -1,0 +1,72 @@
+\begin{tikzpicture}[>=Stealth,font=\footnotesize]
+  \tikzset{
+    elbopanel/.style={
+      draw=stat221Gray!30,
+      fill=white,
+      rounded corners=5pt,
+      line width=0.6pt
+    },
+    elbotitle/.style={font=\small\bfseries, text=stat221Gray!90},
+    latbox/.style={
+      rounded corners=3pt,
+      minimum width=1.95cm,
+      minimum height=0.76cm,
+      line width=0.8pt
+    },
+    elbobadge/.style={
+      rounded corners=2pt,
+      inner sep=2.6pt,
+      font=\footnotesize,
+      align=center,
+      text=stat221Gray!85
+    }
+  }
+  \path[use as bounding box] (-0.15,-0.24) rectangle (13.45,5.15);
+
+  \node[elbopanel,minimum width=4.10cm,minimum height=4.95cm,anchor=north west] (leftpanel) at (0.0,4.85) {};
+  \node[elbopanel,minimum width=4.10cm,minimum height=4.95cm,anchor=north west] (midpanel) at (4.62,4.85) {};
+  \node[elbopanel,minimum width=4.10cm,minimum height=4.95cm,anchor=north west] (rightpanel) at (9.24,4.85) {};
+
+  \node[elbotitle,anchor=north west] at ([xshift=0.25cm,yshift=-0.28cm]leftpanel.north west) {Single bottleneck};
+  \node[elbotitle,anchor=north west] at ([xshift=0.25cm,yshift=-0.28cm]midpanel.north west) {Hierarchy splits scales};
+  \node[elbotitle,anchor=north west] at ([xshift=0.25cm,yshift=-0.28cm]rightpanel.north west) {Cleaner allocation};
+
+  \node[latbox,draw=stat221Purple!72!black,fill=stat221PurpleLight,minimum width=1.18cm,minimum height=0.68cm] (coarse) at (0.95,3.15) {class};
+  \node[latbox,draw=stat221Blue!72!black,fill=stat221BlueLight,minimum width=1.28cm,minimum height=0.68cm] (detail) at (2.05,3.15) {detail};
+  \node[latbox,draw=stat221Orange!78!black,fill=stat221OrangeLight,minimum width=1.22cm,minimum height=0.68cm] (noise) at (3.15,3.15) {noise};
+  \node[latbox,draw=stat221Purple!72!black,fill=stat221PurpleLight,minimum width=2.15cm,minimum height=0.88cm] (z) at (2.05,1.95) {$z$};
+  \node[latbox,draw=stat221Green!68!black,fill=stat221GreenLight,minimum width=2.15cm,minimum height=0.88cm] (x) at (2.05,0.75) {$x$};
+  \draw[->,stat221Gray!75,line width=0.85pt] (coarse.south) -- (z.north west);
+  \draw[->,stat221Gray!75,line width=0.85pt] (detail.south) -- (z.north);
+  \draw[->,stat221Gray!75,line width=0.85pt] (noise.south) -- (z.north east);
+  \draw[->,stat221Gray!75,line width=0.85pt] (z) -- (x);
+  \node[elbobadge,fill=stat221Gray!8,anchor=west] at (2.72,1.30) {one KL budget};
+
+  \node[latbox,draw=stat221Purple!72!black,fill=stat221PurpleLight,minimum width=2.05cm,minimum height=0.88cm] (z2) at (6.68,3.05) {$z_2$};
+  \node[latbox,draw=stat221Blue!72!black,fill=stat221BlueLight,minimum width=2.05cm,minimum height=0.88cm] (z1) at (6.68,1.92) {$z_1$};
+  \node[latbox,draw=stat221Green!68!black,fill=stat221GreenLight,minimum width=2.05cm,minimum height=0.88cm] (xh) at (6.68,0.78) {$x$};
+  \draw[->,stat221Gray!75,line width=0.85pt] (z2) -- (z1);
+  \draw[->,stat221Gray!75,line width=0.85pt] (z1) -- (xh);
+  \node[elbobadge,fill=stat221PurpleLight,anchor=east,text=stat221Purple!75!black] at (5.28,3.05) {global};
+  \node[elbobadge,fill=stat221BlueLight,anchor=east,text=stat221Blue!75!black] at (5.28,1.92) {local};
+  \node[elbobadge,fill=stat221Gray!8,anchor=west] at (7.42,2.47) {$\operatorname{KL}_2$};
+  \node[elbobadge,fill=stat221Gray!8,anchor=west] at (7.42,1.34) {$\operatorname{KL}_1$};
+
+  \node[latbox,draw=stat221Purple!72!black,fill=stat221PurpleLight,text width=1.05cm,align=center,inner xsep=2.6pt] (cat1) at (10.31,3.00) {class 1};
+  \node[latbox,draw=stat221Purple!72!black,fill=stat221PurpleLight,text width=1.05cm,align=center,inner xsep=2.6pt] (cat2) at (12.26,3.00) {class 2};
+  \node[latbox,draw=stat221Blue!72!black,fill=stat221BlueLight,minimum width=0.98cm,minimum height=0.60cm,inner xsep=1.2pt] (d11) at (9.86,1.45) {a};
+  \node[latbox,draw=stat221Blue!72!black,fill=stat221BlueLight,minimum width=0.98cm,minimum height=0.60cm,inner xsep=1.2pt] (d12) at (10.81,1.45) {b};
+  \node[latbox,draw=stat221Blue!72!black,fill=stat221BlueLight,minimum width=0.98cm,minimum height=0.60cm,inner xsep=1.2pt] (d21) at (11.81,1.45) {a};
+  \node[latbox,draw=stat221Blue!72!black,fill=stat221BlueLight,minimum width=0.98cm,minimum height=0.60cm,inner xsep=1.2pt] (d22) at (12.76,1.45) {b};
+  \draw[->,stat221Gray!75,line width=0.85pt] (cat1) -- (d11);
+  \draw[->,stat221Gray!75,line width=0.85pt] (cat1) -- (d12);
+  \draw[->,stat221Gray!75,line width=0.85pt] (cat2) -- (d21);
+  \draw[->,stat221Gray!75,line width=0.85pt] (cat2) -- (d22);
+  \node[
+    elbobadge,
+    fill=stat221Gray!8,
+    anchor=south,
+    text width=3.15cm,
+    inner ysep=1.4pt
+  ] at ([yshift=0.14cm]rightpanel.south) {coarse choice first,\\local detail second};
+\end{tikzpicture}

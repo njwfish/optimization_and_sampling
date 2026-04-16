@@ -1,0 +1,111 @@
+\begin{tikzpicture}[>=Stealth,font=\small]
+  \tikzset{
+    panel/.style={
+      rounded corners=6pt,
+      draw=stat221Gray!35,
+      fill=stat221GrayLight,
+      line width=0.8pt,
+    },
+    paneltitle/.style={
+      font=\footnotesize\bfseries,
+      text=stat221Gray,
+      align=center,
+      text width=5.2cm,
+    },
+    state/.style={
+      draw=stat221Gray!70!black,
+      fill=white,
+      rounded corners=3pt,
+      line width=0.85pt,
+      minimum width=1.04cm,
+      minimum height=0.74cm,
+      inner sep=1pt,
+    },
+    current/.style={
+      state,
+      draw=stat221Blue!75!black,
+      fill=stat221BlueLight,
+      line width=0.95pt,
+    },
+    blocked/.style={
+      state,
+      draw=stat221Gray!60,
+      dashed,
+    },
+    candidatea/.style={
+      state,
+      draw=stat221Blue!75!black,
+      fill=stat221BlueLight,
+    },
+    candidateb/.style={
+      state,
+      draw=stat221Green!70!black,
+      fill=stat221GreenLight,
+    },
+    candidatec/.style={
+      state,
+      draw=stat221Purple!70!black,
+      fill=stat221PurpleLight,
+    },
+    candidated/.style={
+      state,
+      draw=stat221Orange!70!black,
+      fill=stat221OrangeLight,
+    },
+    prob/.style={
+      rounded corners=3pt,
+      draw=stat221Gray!30,
+      fill=white,
+      inner sep=1.5pt,
+      font=\scriptsize,
+      text=stat221Gray,
+    },
+    marginal/.style={
+      rounded corners=3pt,
+      draw=stat221Green!70!black,
+      fill=stat221GreenLight,
+      line width=0.85pt,
+      minimum width=1.85cm,
+      minimum height=0.95cm,
+      inner sep=3pt,
+      align=center,
+    },
+  }
+
+  \path[use as bounding box] (-0.15,-0.10) rectangle (14.05,4.55);
+
+  \draw[panel] (0.0,0.0) rectangle ++(6.65,4.15);
+  \draw[panel] (7.10,0.0) rectangle ++(6.65,4.15);
+  \node[paneltitle] at (3.33,3.70) {Exact model: one posterior on \(\mathcal{V}^2\)};
+  \node[paneltitle] at (10.43,3.70) {Factorized model: one posterior per position};
+
+  % Left panel
+  \node[current] (xfull) at (1.15,2.00) {\texttt{BA}};
+  \node[font=\scriptsize,text=stat221Gray] at (1.15,1.38) {condition on \(x_t\)};
+  \draw[->,stat221Gray!70,line width=0.85pt] (1.80,2.00) -- (2.75,2.00);
+  \node[candidatea] at (3.85,2.85) {\texttt{AA}};
+  \node[candidateb] at (5.10,2.85) {\texttt{AB}};
+  \node[candidatec] at (3.85,1.45) {\texttt{BA}};
+  \node[candidated] at (5.10,1.45) {\texttt{BB}};
+  \node[prob] at (3.85,3.35) {\(0.35\)};
+  \node[prob] at (5.10,3.35) {\(0.24\)};
+  \node[prob] at (3.85,1.95) {\(0.15\)};
+  \node[prob] at (5.10,1.95) {\(0.26\)};
+  \node[font=\footnotesize,text=stat221Gray,align=center,text width=5.3cm] at (3.98,0.40)
+    {one network output already specifies a distribution over complete clean sequences};
+
+  % Right panel
+  \node[current] (xfact) at (8.75,2.00) {\texttt{BA}};
+  \node[state]   (xaa)   at (12.00,2.85) {\texttt{AA}};
+  \node[state]   (xbb)   at (12.00,1.15) {\texttt{BB}};
+  \node[blocked] (xab)   at (13.10,2.00) {\texttt{AB}};
+  \draw[->,stat221Green!70!black,line width=1.55pt,line cap=round]
+    (xfact) -- node[above,font=\scriptsize,text=stat221Green!55!black] {\(0.7\,c_t\)} (xaa);
+  \draw[->,stat221Purple!70!black,line width=1.70pt,line cap=round]
+    (xfact) -- node[below,font=\scriptsize,text=stat221Purple!60!black] {\(0.8\,c_t\)} (xbb);
+  \draw[->,stat221Gray!75,line width=0.95pt,dashed]
+    (xfact) -- (xab);
+  \node[font=\scriptsize,text=stat221Gray!75] at (12.98,2.52) {needs two repairs};
+  \node[marginal] at (8.55,0.72) {\(\mu_{t,1}\)\\[-1pt]\scriptsize \(A:0.7,\ B:0.3\)};
+  \node[marginal] at (10.55,0.72) {\(\mu_{t,2}\)\\[-1pt]\scriptsize \(A:0.2,\ B:0.8\)};
+\end{tikzpicture}

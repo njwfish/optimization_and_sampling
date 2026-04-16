@@ -1,0 +1,36 @@
+Convergence speed is strongly influenced by how anisotropic the curvature of $f$ is.
+A standard way to quantify this is the \emph{condition number} of the Hessian.
+
+\begin{definition}[Condition number]
+If $f$ is twice differentiable and $\Hess f(x)$ is positive definite, define the (local) condition number
+\begin{equation}
+  \kappa(x) = \frac{\lambda_{\max}(\Hess f(x))}{\lambda_{\min}(\Hess f(x))}.
+  \label{eq:condition-number-local}
+\end{equation}
+If $mI \preceq \Hess f(x) \preceq MI$ holds over a region of interest, then $\kappa(x)\le M/m$ on that region and we refer to $\kappa = M/m$ as a global condition number bound.
+\end{definition}
+
+\begin{example}[Bounding $\kappa$ for ridge logistic regression]
+For $s(\theta)$ in \cref{ex:logistic-reg}, \eqref{eq:logistic-hess-bound}--\eqref{eq:logistic-ridge-hess} imply
+\[
+  mI \preceq \Hess s(\theta) \preceq \Bigl(m + \tfrac14 \lambda_{\max}(X^\top X)\Bigr) I,
+\]
+so we can take
+\[
+  M = m + \tfrac14 \lambda_{\max}(X^\top X),
+  \qquad
+  \kappa \le \frac{M}{m}.
+\]
+\end{example}
+
+Geometrically, think of the level sets of $f$ near the optimum as ellipses.
+When $\kappa$ is large, the ellipses are very elongated, so a single step size cannot simultaneously be ``right'' in both the steep and flat directions.
+Vanilla gradient descent can therefore zig-zag and make slow progress; preconditioning (or second-order methods) aims to reduce the effective condition number.
+
+\begin{figure}[t]
+  \centering
+  \input{figures/main_notes/optimization/fig_ill_conditioned_gd}
+  \caption{Ill-conditioned geometry: elongated level sets lead to slow, zig-zagging gradient descent.
+  Small step sizes are stable but can be very slow; larger step sizes can oscillate in the steep direction (and must be controlled, e.g.\ by backtracking).}
+  \label{fig:ill-conditioned-gd}
+\end{figure}

@@ -1,0 +1,289 @@
+\subsection{Markov chains, invariant distributions, and ergodicity}
+\label{subsec:markov-chains-kernels}
+
+In many problems our goal is to compute expectations under a distribution $\pi$ on $\R^d$,
+\[
+\mu \coloneqq \E_{X\sim \pi}[g(X)],
+\]
+where $\pi$ may be known only up to a normalizing constant.
+If we can draw i.i.d.\ samples from $\pi$, then the basic Monte Carlo estimator is immediate.
+However, in moderate or high dimensions, designing good i.i.d.\ proposals can be difficult; for instance, rejection sampling can have vanishing acceptance probabilities and importance sampling can suffer from weight degeneracy (see \Cref{subsec:mc-generating}).
+
+Markov chain Monte Carlo (MCMC) takes a different approach.
+Instead of sampling i.i.d., we simulate a Markov chain whose \emph{marginal} distribution converges to $\pi$.
+The resulting samples are correlated, but if the chain mixes well then empirical averages of $g(X_n)$ can still be accurate.
+Thus an MCMC method is a choice of a one-step transition rule $K$ that is (i) easy to simulate, (ii) has invariant distribution $\pi$, and (iii) moves through the state space efficiently.
+
+\begin{definition}[Transition kernel]
+Let $\mathcal{X}=\R^d$ and let $\mathcal{B}(\mathcal{X})$ denote its Borel $\sigma$-algebra.
+A \emph{transition kernel} is a function
+\[
+K:\mathcal{X}\times\mathcal{B}(\mathcal{X})\to[0,1],\qquad (x,A)\mapsto K(x,A),
+\]
+such that:
+(i) for each fixed $x\in\mathcal{X}$, the map $A\mapsto K(x,A)$ is a probability measure on $\mathcal{B}(\mathcal{X})$, and
+(ii) for each fixed $A\in\mathcal{B}(\mathcal{X})$, the map $x\mapsto K(x,A)$ is measurable.
+\end{definition}
+
+The interpretation is that $K(x,A)$ is the probability that one step of the chain moves into the set $A$ when the current state is $x$.
+We often write $K(x,dy)$ as a notational reminder that, for each fixed $x$, $K(x,\cdot)$ is a measure on $\mathcal{X}$.
+
+If $K(x,\cdot)$ is absolutely continuous with respect to Lebesgue measure, we write $k(y\mid x)$ for a conditional density and
+\[
+K(x,A) = \int_A k(y\mid x)\,dy.
+\]
+More generally, for any measurable $f:\mathcal{X}\to\R$ with $\int |f(y)|\,K(x,dy)<\infty$, define the associated Markov operator
+\[
+(Kf)(x) \coloneqq \int_{\mathcal{X}} f(y)\,K(x,dy).
+\]
+Then $(Kf)(x)$ is the conditional expectation $\E[f(X_{n+1})\mid X_n=x]$ when $(X_n)$ has transition kernel $K$.
+
+\begin{definition}[Markov chain with kernel $K$]
+A sequence $(X_n)_{n\ge 0}$ is a (time-homogeneous) Markov chain with transition kernel $K$ if for every $n\ge 0$ and every $A\in\mathcal{B}(\mathcal{X})$,
+\[
+\mathbb{P}(X_{n+1}\in A\mid X_0,\dots,X_n)=\mathbb{P}(X_{n+1}\in A\mid X_n)=K(X_n,A)
+\]
+almost surely.
+\end{definition}
+
+Equivalently, conditional on $X_n=x$, we draw the next state as
+\[
+X_{n+1}\mid X_n=x \sim K(x,\cdot).
+\]
+An initial distribution for $X_0$, together with $K$, determines the joint law of $(X_0,X_1,\dots)$.
+We focus on discrete-time, time-homogeneous chains because they are directly implementable, though many MCMC methods are motivated by continuous-time Markov processes and their discretizations.
+
+\subsubsection{Transition kernels and iterated kernels}
+\label{subsubsec:iterated-kernels}
+Let $K$ be a transition kernel.
+Define the $m$-step kernel $K^m$ recursively by $K^1=K$ and
+\[
+K^{m+1}(x,A) \coloneqq \int_{\mathcal{X}} K^m(y,A)\,K(x,dy).
+\]
+Then $K^m(x,A)=\mathbb{P}(X_{n+m}\in A\mid X_n=x)$, and the recursion is the discrete-time Chapman--Kolmogorov equation.
+If $\mu$ is a distribution for $X_0$, the marginal distribution after $m$ steps is the measure
+\[
+(\mu K^m)(A)\coloneqq \int_{\mathcal{X}} K^m(x,A)\,\mu(dx).
+\]
+Thinking in these terms makes the MCMC objective precise: we want $\mu K^m$ to approach $\pi$ as $m$ grows, even when $\mu$ is far from $\pi$.
+Continuous-time Markov processes use the same notation with a time index:
+for a time-homogeneous process \((X_t)_{t\ge 0}\), one writes
+\[
+  K_t(x,A)\coloneqq \mathbb{P}(X_{s+t}\in A\mid X_s=x),
+  \qquad
+  t\ge 0,
+\]
+which does not depend on \(s\).
+Then \(K_0(x,A)=\1\{x\in A\}\), and the Chapman--Kolmogorov equation becomes
+\[
+  K_{s+t}(x,A)=\int_{\mathcal{X}} K_t(y,A)\,K_s(x,dy),
+  \qquad
+  s,t\ge 0.
+\]
+This is the continuous-time analogue of the discrete iterated-kernel recursion above.
+
+\begin{example}[Gaussian AR(1) chain]
+\label{ex:ar1-kernel}
+Fix $\rho\in(-1,1)$ and let $(\varepsilon_n)_{n\ge 1}$ be i.i.d.\ $\mathcal{N}(0,1)$.
+Define
+\[
+X_{n+1} = \rho X_n + \sqrt{1-\rho^2}\,\varepsilon_{n+1}.
+\]
+Then $K(x,\cdot)=\mathcal{N}(\rho x,\,1-\rho^2)$.
+Iterating the recursion shows that for every deterministic starting point \(X_0=x_0\),
+\[
+  X_n \sim \mathcal{N}\!\left(\rho^n x_0,\,1-\rho^{2n}\right).
+\]
+In particular, if \(X_0=0\), then \(X_n\sim \mathcal{N}(0,1-\rho^{2n})\), and if $X_0\sim\mathcal{N}(0,1)$, then $X_n\sim\mathcal{N}(0,1)$ for all $n$, so $\pi=\mathcal{N}(0,1)$ is an invariant distribution.
+\end{example}
+
+\begin{example}[Ornstein--Uhlenbeck process]
+The Ornstein--Uhlenbeck (OU) process is a continuous-time Markov process with a Gaussian transition kernel.
+In a standard parameterization, if $X_s=x$ then
+\[
+X_{s+t}\mid X_s=x \sim \mathcal{N}\!\left(e^{-t}x,\,1-e^{-2t}\right),
+\qquad t\ge 0.
+\]
+Equivalently, for a deterministic initial value \(X_0=x_0\),
+\[
+  X_t \sim \mathcal{N}\!\left(e^{-t}x_0,\,1-e^{-2t}\right).
+\]
+Thus from \(X_0=0\) the transient marginal is \(\mathcal{N}(0,1-e^{-2t})\), which relaxes to stationarity as \(t\to\infty\).
+The corresponding stationary distribution is $\mathcal{N}(0,1)$.
+\end{example}
+
+\subsubsection{Invariant distributions and Monte Carlo averages}
+\label{subsec:invariant-stationary}
+
+The central design goal in MCMC is to build a kernel $K$ whose invariant distribution is the target distribution $\pi$.
+In terms of the operator $\mu\mapsto \mu K$ defined by
+\[
+(\mu K)(A)\coloneqq \int_{\mathcal{X}} K(x,A)\,\mu(dx),
+\]
+invariance simply means that $\pi$ is a fixed point: $\pi K=\pi$.
+
+\begin{definition}[Invariant distribution]
+\label{def:invariant-distribution}
+A probability measure $\pi$ on $\mathcal{X}$ is \emph{invariant} (or \emph{stationary}) for $K$ if for every $A\in\mathcal{B}(\mathcal{X})$,
+\[
+\pi(A) = \int_{\mathcal{X}} K(x,A)\,\pi(dx).
+\]
+Equivalently, if $X\sim \pi$ and $Y\mid X=x \sim K(x,\cdot)$, then $Y\sim \pi$.
+\end{definition}
+
+\begin{proposition}[Starting from $\pi$ gives stationarity]
+\label{prop:stationarity}
+If $(X_n)_{n\ge 0}$ is a Markov chain with kernel $K$ and invariant distribution $\pi$, and $X_0\sim\pi$, then $X_n\sim\pi$ for all $n\ge 0$.
+\end{proposition}
+\begin{proof}
+The claim holds for $n=0$ by assumption.
+Assume $X_n\sim\pi$.
+Then for any measurable $A$,
+\[
+\mathbb{P}(X_{n+1}\in A)
+= \E\bigl[\mathbb{P}(X_{n+1}\in A\mid X_n)\bigr]
+= \E\bigl[K(X_n,A)\bigr]
+= \int_{\mathcal{X}} K(x,A)\,\pi(dx)
+= \pi(A),
+\]
+where the last equality is invariance.
+\end{proof}
+
+Stationarity means that all one-dimensional marginals are $\pi$, but the samples are generally \emph{not} independent.
+This dependence is central to how we analyze the efficiency of MCMC estimators.
+
+\subsubsection{Reversibility and detailed balance}
+\label{subsubsec:detailed-balance}
+Many MCMC kernels are constructed by enforcing a stronger symmetry property than invariance.
+
+\begin{definition}[Detailed balance]
+A kernel $K$ is \emph{reversible} with respect to $\pi$ if for all measurable sets $A,B\in\mathcal{B}(\mathcal{X})$,
+\[
+\int_A K(x,B)\,\pi(dx) = \int_B K(x,A)\,\pi(dx).
+\]
+Equivalently, the joint distribution of $(X_0,X_1)$ is symmetric when $(X_n)$ is stationary: if $X_0\sim\pi$ and $X_1\mid X_0\sim K(X_0,\cdot)$, then $(X_0,X_1)$ has the same law as $(X_1,X_0)$.
+\end{definition}
+
+Detailed balance implies invariance by taking $A=\mathcal{X}$.
+Reversibility is not necessary for MCMC, but it is a convenient sufficient condition and will be the main tool behind Metropolis--Hastings kernels.
+
+\subsubsection{Autocorrelation and effective sample size}
+\label{subsubsec:ess}
+Let $(X_n)_{n\ge 0}$ be stationary with $X_n\sim\pi$ and let $g:\mathcal{X}\to\R$ satisfy $\E_\pi[g(X)^2]<\infty$.
+We estimate $\mu=\E_\pi[g(X)]$ by the empirical average
+\[
+\hat\mu_n \coloneqq \frac{1}{n}\sum_{i=1}^n g(X_i).
+\]
+Then $\E[\hat\mu_n]=\mu$, but $\operatorname{Var}(\hat\mu_n)$ is typically larger than the i.i.d.\ variance $\operatorname{Var}_\pi(g(X))/n$ because of serial correlation.
+
+Define the autocovariance $\gamma_k=\operatorname{Cov}_\pi(g(X_0),g(X_k))$.
+By expanding the variance of a sum and using stationarity,
+\begin{equation}
+  \operatorname{Var}(\hat\mu_n)
+  = \frac{1}{n^2}\sum_{i=1}^n\sum_{j=1}^n \operatorname{Cov}\!\bigl(g(X_i),g(X_j)\bigr)
+  = \frac{1}{n^2}\left(n\gamma_0 + 2\sum_{k=1}^{n-1} (n-k)\gamma_k\right).
+  \label{eq:mcmc-variance}
+\end{equation}
+In the i.i.d.\ case, the off-diagonal covariances vanish and $\operatorname{Var}(\hat\mu_n)=\gamma_0/n$.
+This suggests defining the \emph{effective sample size} by matching variances:
+\[
+N_{\mathrm{eff}}(n,g) \coloneqq \frac{\operatorname{Var}_\pi(g(X_0))}{\operatorname{Var}(\hat\mu_n)}
+= \frac{\gamma_0}{\operatorname{Var}(\hat\mu_n)}.
+\]
+When the samples are i.i.d., $N_{\mathrm{eff}}(n,g)=n$.
+When there is positive serial correlation, $N_{\mathrm{eff}}(n,g)$ can be much smaller than $n$.
+
+Writing $\rho_k=\gamma_k/\gamma_0$ (when $\gamma_0>0$) gives
+\[
+\operatorname{Var}(\hat\mu_n)
+= \frac{\gamma_0}{n}\left(1 + 2\sum_{k=1}^{n-1}\left(1-\frac{k}{n}\right)\rho_k\right).
+\]
+If the series $\sum_{k\ge 1}\rho_k$ is summable, the coefficient in parentheses stabilizes as $n$ grows.
+This motivates the \emph{integrated autocorrelation time}
+\[
+\tau_{\mathrm{int}} \coloneqq 1+2\sum_{k=1}^{\infty}\rho_k,
+\]
+and the corresponding \emph{effective sample size}
+\[
+N_{\mathrm{eff}} \approx \frac{n}{\tau_{\mathrm{int}}}.
+\]
+The interpretation is that $n$ correlated MCMC draws provide roughly the same estimation accuracy as $N_{\mathrm{eff}}$ i.i.d.\ samples from $\pi$.
+Both $\tau_{\mathrm{int}}$ and $N_{\mathrm{eff}}$ depend on the function $g$; a chain can mix quickly for some summaries of the state while remaining highly correlated for others.
+This is a different notion from the weight-based ESS in importance sampling and SMC.
+Here ESS measures the loss of information caused by serial correlation in one chain, whereas there it measures how uneven a set of normalized weights has become.
+This autocorrelation-based ESS formula is standard in MCMC diagnostics; see \citet[\S2.2, p.~11]{betancourt_2017_hmc_conceptual}.
+
+\begin{example}[Integrated autocorrelation time for the AR(1) chain]
+Consider the stationary AR(1) chain from \Cref{ex:ar1-kernel} and take $g(x)=x$.
+Then $\rho_k=\rho^k$, so
+\[
+\tau_{\mathrm{int}} = 1+2\sum_{k=1}^{\infty}\rho^k = 1+\frac{2\rho}{1-\rho} = \frac{1+\rho}{1-\rho}.
+\]
+Thus $N_{\mathrm{eff}}\approx n(1-\rho)/(1+\rho)$.
+When $\rho$ is close to $1$, successive states are extremely similar and the effective sample size can be much smaller than $n$.
+\end{example}
+
+\subsubsection{Ergodicity, mixing time, and burn-in}
+\label{subsec:ergodicity}
+
+In practice we rarely start the chain exactly from \(\pi\).
+Early iterates still remember the initialization, so averages formed too soon can be biased by where the chain started rather than by the target law itself.
+Burn-in is the attempt to discard enough of those early steps that this memory has mostly washed out.
+To make that idea precise, we ask that \(K^m(x,\cdot)\) approach \(\pi\) as \(m\to\infty\) for a wide range of starting states \(x\).
+Invariance alone does not guarantee this: a chain can have \(\pi\) invariant but fail to reach it from some initial states, or oscillate without settling down.
+
+\begin{definition}[Total variation distance]
+\label{def:tv-distance}
+For probability measures $\mu,\nu$ on $(\mathcal{X},\mathcal{B}(\mathcal{X}))$, their total variation distance is
+\[
+\norm{\mu-\nu}_{\mathrm{TV}} \coloneqq \sup_{A\in\mathcal{B}(\mathcal{X})}\bigl|\mu(A)-\nu(A)\bigr|.
+\]
+\end{definition}
+
+Total variation is a worst-case discrepancy over events: it controls how much any probability statement can change when we replace $\mu$ by $\nu$.
+If $\mu$ and $\nu$ have densities $p$ and $q$, then
+\[
+\norm{\mu-\nu}_{\mathrm{TV}} = \frac12\int_{\mathcal{X}} |p(x)-q(x)|\,dx.
+\]
+
+A standard way to summarize convergence speed from a particular starting state $x$ is the $\varepsilon$-mixing time
+\[
+t_{\mathrm{mix}}(\varepsilon;x) \coloneqq \min\left\{m\ge 0:\norm{K^m(x,\cdot)-\pi}_{\mathrm{TV}}\le \varepsilon\right\}.
+\]
+On unbounded state spaces, the more stringent ``worst-case over $x$'' notion can be infinite; what matters in practice is convergence from the initializations we actually use.
+Under geometric ergodicity (\Cref{def:geometric-ergodicity}), one has
+$\norm{K^m(x,\cdot)-\pi}_{\mathrm{TV}}\le M(x)\rho^m$, so it is enough to take $m$ on the order of $\log(M(x)/\varepsilon)/\log(1/\rho)$.
+The burn-in length $B$ in \Cref{alg:mcmc-burnin} is an attempt to choose $B\gtrsim t_{\mathrm{mix}}(\varepsilon;x^{(0)})$ for some small $\varepsilon$, but in most realistic problems we cannot compute $t_{\mathrm{mix}}$ and instead rely on diagnostic checks.
+This separation between early bias reduction and later variance reduction is the same qualitative warm-up picture emphasized in \citet[\S2.2, pp.~11--12]{betancourt_2017_hmc_conceptual}.
+
+\begin{definition}[Geometric ergodicity]
+\label{def:geometric-ergodicity}
+A Markov chain with transition kernel $K$ and invariant distribution $\pi$ is \emph{geometrically ergodic} if there exist $\rho\in(0,1)$ and a function $M:\mathcal{X}\to[0,\infty)$ such that for all $m\ge 0$,
+\[
+\norm{K^m(x,\cdot)-\pi}_{\mathrm{TV}} \le M(x)\rho^m.
+\]
+\end{definition}
+
+Geometric ergodicity is a strong form of convergence: it says the distribution contracts at a linear (geometric) rate in total variation.
+The Gaussian AR(1) chain in \Cref{ex:ar1-kernel} and the OU process are clean examples of this behavior: their linear drift contracts toward the origin while the noise prevents collapse.
+
+\begin{algorithm}[t]
+  \caption{Generic MCMC estimation with burn-in}
+  \label{alg:mcmc-burnin}
+  \begin{algorithmic}[1]
+    \Require Transition kernel $K$ with invariant distribution $\pi$, initial state $x^{(0)}$, burn-in $B$, total steps $T$, test function $g$
+    \For{$t=0,1,\dots,T-1$}
+      \State Draw $x^{(t+1)} \sim K(x^{(t)},\cdot)$
+    \EndFor
+    \State Discard $x^{(0)},\dots,x^{(B)}$ and keep $x^{(B+1)},\dots,x^{(T)}$
+    \State \Return $\hat\mu = (T-B)^{-1}\sum_{t=B+1}^T g(x^{(t)})$
+  \end{algorithmic}
+\end{algorithm}
+
+Discarding burn-in reduces bias from initialization, but it does not make the remaining samples independent.
+The residual serial dependence is what drives the variance inflation in \Cref{eq:mcmc-variance} and is summarized by $\tau_{\mathrm{int}}$ (or $N_{\mathrm{eff}}$).
+
+When comparing MCMC algorithms, two recurring questions are:
+(i) how long it takes for the chain to approach stationarity (mixing time / burn-in), and
+(ii) how much correlation remains after convergence (which controls $N_{\mathrm{eff}}$ via \Cref{eq:mcmc-variance}).
+We return to practical diagnostics for both questions in \Cref{subsec:mcmc-diagnostics}.

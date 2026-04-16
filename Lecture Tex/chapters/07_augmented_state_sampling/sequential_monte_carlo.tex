@@ -1,0 +1,526 @@
+\subsection{Sequential Monte Carlo and particle filters}
+\label{subsec:smc}
+
+The earlier methods in this unit target one fixed distribution.
+State-space models change the problem: after observing $y_1,\dots,y_t$ we want the current posterior for the latent state, and at time $t+1$ that target changes because a new observation arrives.
+Sequential Monte Carlo (SMC) is built for exactly this update cycle.
+At each time step it represents the current filtering law by particles, reweights those particles using the new observation, and resamples when the weights have become too uneven.
+
+The augmentation is therefore different from the momentum and temperature variables in the previous chapters.
+Here the auxiliary state is a whole interacting population, together with weights and eventually ancestry variables, that tracks an evolving sequence of posterior distributions.
+The particles propagate through the latent dynamics, the weights incorporate the newest observation, and resampling prevents the approximation from collapsing onto a single lineage.
+
+\subsubsection{State-space models and filtering recursions}
+\label{subsubsec:smc-ssm}
+
+Let $x_t\in\R^d$ denote a latent state and $y_t\in\R^m$ the corresponding observation.
+A state-space model is specified by an initial law $p_0$, a transition density $f_\theta$, and an observation density $g_\theta$:
+\begin{equation}
+  x_0 \sim p_0,
+  \qquad
+  x_t \mid x_{t-1} \sim f_\theta(\cdot \mid x_{t-1}),
+  \qquad
+  y_t \mid x_t \sim g_\theta(\cdot \mid x_t).
+  \label{eq:smc-ssm}
+\end{equation}
+The latent process $(x_t)_{t\ge 0}$ is Markov, and the observations are conditionally independent given the states.
+For data $y_{1:T}$, the four recurring inferential tasks are
+\[
+  \text{filtering: } p_\theta(x_t \mid y_{1:t}),
+  \qquad
+  \text{prediction: } p_\theta(x_{t+k} \mid y_{1:t}),
+\]
+\[
+  \text{smoothing: } p_\theta(x_{0:t} \mid y_{1:T}),
+  \qquad
+  \text{parameter learning: infer } \theta \text{ from } y_{1:T}.
+\]
+Filtering is the central online problem, because once we can update $p_\theta(x_t\mid y_{1:t})$ sequentially, prediction and likelihood evaluation follow from the same recursion, while smoothing and parameter learning can be built on top of those filtered quantities.
+
+\begin{proposition}[Prediction and update]
+\label{prop:smc-filtering-recursion}
+For the state-space model \eqref{eq:smc-ssm}, the predictive and filtering laws satisfy
+\begin{equation}
+  p_\theta(x_t \mid y_{1:t-1})
+  =
+  \int f_\theta(x_t \mid x_{t-1})\,p_\theta(x_{t-1} \mid y_{1:t-1})\,dx_{t-1},
+  \label{eq:smc-predict}
+\end{equation}
+and
+\begin{equation}
+  p_\theta(x_t \mid y_{1:t})
+  =
+  \frac{g_\theta(y_t \mid x_t)\,p_\theta(x_t \mid y_{1:t-1})}{z_t},
+  \qquad
+  z_t \coloneqq p_\theta(y_t \mid y_{1:t-1})
+  =
+  \int g_\theta(y_t \mid x_t)\,p_\theta(x_t \mid y_{1:t-1})\,dx_t.
+  \label{eq:smc-update}
+\end{equation}
+\end{proposition}
+\begin{proof}
+Using the Markov property of the latent chain,
+\[
+  p_\theta(x_t \mid x_{t-1},y_{1:t-1}) = p_\theta(x_t \mid x_{t-1}) = f_\theta(x_t \mid x_{t-1}).
+\]
+Therefore
+\[
+  p_\theta(x_t \mid y_{1:t-1})
+  =
+  \int p_\theta(x_t \mid x_{t-1},y_{1:t-1})\,p_\theta(x_{t-1} \mid y_{1:t-1})\,dx_{t-1},
+\]
+which gives \eqref{eq:smc-predict}.
+For the update, Bayes's rule and conditional independence of $y_t$ from $y_{1:t-1}$ given $x_t$ yield
+\[
+  p_\theta(x_t \mid y_{1:t})
+  =
+  \frac{p_\theta(y_t \mid x_t,y_{1:t-1})\,p_\theta(x_t \mid y_{1:t-1})}{p_\theta(y_t \mid y_{1:t-1})}
+  =
+  \frac{g_\theta(y_t \mid x_t)\,p_\theta(x_t \mid y_{1:t-1})}{p_\theta(y_t \mid y_{1:t-1})}.
+\]
+Integrating the numerator over $x_t$ gives the normalizing constant $z_t$ and proves \eqref{eq:smc-update}.%
+\end{proof}
+
+\subsubsection{Kalman filtering as a tractable baseline}
+\label{subsubsec:smc-kalman}
+
+The prediction-update recursion becomes especially simple in the linear-Gaussian model
+\begin{equation}
+  x_0 \sim \mathcal{N}(m_0,P_0),
+  \qquad
+  x_t = A x_{t-1} + q_t,
+  \quad q_t \sim \mathcal{N}(0,Q),
+  \qquad
+  y_t = C x_t + r_t,
+  \quad r_t \sim \mathcal{N}(0,R),
+  \label{eq:smc-linear-gaussian}
+\end{equation}
+with independent Gaussian noises.
+If
+\[
+  x_{t-1} \mid y_{1:t-1} \sim \mathcal{N}(m_{t-1},P_{t-1}),
+\]
+then \eqref{eq:smc-predict} implies
+\begin{equation}
+  x_t \mid y_{1:t-1} \sim \mathcal{N}(\hat m_t,\hat P_t),
+  \qquad
+  \hat m_t = A m_{t-1},
+  \qquad
+  \hat P_t = A P_{t-1} A^\top + Q.
+  \label{eq:smc-kalman-predict}
+\end{equation}
+The update is equally explicit.
+Conditional on $y_{1:t-1}$, the observation equation in \eqref{eq:smc-linear-gaussian} gives
+\[
+  y_t = Cx_t + r_t,
+  \qquad
+  r_t \sim \mathcal{N}(0,R),
+\]
+with $r_t$ independent of $x_t$.
+Therefore the pair $(x_t,y_t)$ is jointly Gaussian with
+\begin{equation}
+  \begin{bmatrix}
+    x_t \\
+    y_t
+  \end{bmatrix}
+  \,\bigm|\,
+  y_{1:t-1}
+  \sim
+  \mathcal{N}\!\left(
+    \begin{bmatrix}
+      \hat m_t \\
+      C\hat m_t
+    \end{bmatrix},
+    \begin{bmatrix}
+      \hat P_t & \hat P_t C^\top \\
+      C\hat P_t & C\hat P_t C^\top + R
+    \end{bmatrix}
+  \right).
+  \label{eq:smc-joint-gaussian}
+\end{equation}
+For a jointly Gaussian pair $(U,V)$ with block mean $(\mu_U,\mu_V)$ and block covariance
+\[
+  \begin{bmatrix}
+    \Sigma_{UU} & \Sigma_{UV} \\
+    \Sigma_{VU} & \Sigma_{VV}
+  \end{bmatrix},
+\]
+completing the square in the joint density shows that
+\[
+  U \mid V=v
+  \sim
+  \mathcal{N}\!\left(
+    \mu_U + \Sigma_{UV}\Sigma_{VV}^{-1}(v-\mu_V),
+    \Sigma_{UU} - \Sigma_{UV}\Sigma_{VV}^{-1}\Sigma_{VU}
+  \right).
+\]
+Applying this formula to \eqref{eq:smc-joint-gaussian} yields the innovation covariance
+\[
+  S_t \coloneqq C\hat P_t C^\top + R
+\]
+When $R \succ 0$, the matrix $S_t$ is invertible, and the Kalman gain is
+\begin{equation}
+  K_t \coloneqq \hat P_t C^\top S_t^{-1}
+  =
+  \hat P_t C^\top (C\hat P_t C^\top + R)^{-1},
+  \label{eq:smc-kalman-gain}
+\end{equation}
+\begin{equation}
+  m_t = \hat m_t + K_t(y_t - C\hat m_t),
+  \qquad
+  P_t = \hat P_t - K_t C\hat P_t = (I-K_tC)\hat P_t.
+  \label{eq:smc-kalman-update}
+\end{equation}
+The correction term $y_t - C\hat m_t$ is the innovation: it measures how far the new observation lies from its prediction under the current state estimate, and the matrix $K_t$ determines how strongly that discrepancy should pull the posterior mean.
+The important structural point is not the formula itself, but the Gaussian closure behind it:
+linear dynamics and Gaussian noise keep the filtering distribution inside a tractable parametric family.
+If the latent states $x_{0:T}$ were observed, parameter learning in \eqref{eq:smc-linear-gaussian} would reduce to ordinary multivariate regression and residual covariance estimation.
+For example, one would estimate the dynamics by regressing $x_t$ on $x_{t-1}$,
+\[
+  \hat A
+  =
+  \left(\sum_{t=1}^T x_t x_{t-1}^\top\right)
+  \left(\sum_{t=1}^T x_{t-1}x_{t-1}^\top\right)^{-1},
+  \qquad
+  \hat Q
+  =
+  \frac{1}{T}\sum_{t=1}^T
+  (x_t-\hat A x_{t-1})(x_t-\hat A x_{t-1})^\top,
+\]
+while the observation model would give
+\[
+  \hat C
+  =
+  \left(\sum_{t=1}^T y_t x_t^\top\right)
+  \left(\sum_{t=1}^T x_t x_t^\top\right)^{-1},
+  \qquad
+  \hat R
+  =
+  \frac{1}{T}\sum_{t=1}^T
+  (y_t-\hat C x_t)(y_t-\hat C x_t)^\top.
+\]
+The hidden-state difficulty is exactly that these regressors are unobserved.
+
+That is why Kalman filtering solves the online problem exactly, and why a backward Gaussian-smoothing pass is the natural bridge to the EM updates from \Cref{subsec:expectation-maximization}.
+Running the Kalman filter forward gives the filtered Gaussian laws, and a backward Rauch--Tung--Striebel-type pass then returns smoothed means and covariances such as
+\[
+  m_t^{\mathrm{s}} \coloneqq \E_{\theta^{(k)}}[x_t\mid y_{1:T}],
+  \qquad
+  P_t^{\mathrm{s}} \coloneqq \operatorname{Var}_{\theta^{(k)}}(x_t\mid y_{1:T}),
+  \qquad
+  P_{t,t-1}^{\mathrm{s}} \coloneqq \operatorname{Cov}_{\theta^{(k)}}(x_t,x_{t-1}\mid y_{1:T}).
+\]
+The E-step for a current parameter value $\theta^{(k)}$ therefore reduces to computing the smoothed one-step and lag-one moments
+\begin{equation}
+  \E_{\theta^{(k)}}[x_t \mid y_{1:T}],
+  \qquad
+  \E_{\theta^{(k)}}[x_t x_t^\top \mid y_{1:T}],
+  \qquad
+  \E_{\theta^{(k)}}[x_t x_{t-1}^\top \mid y_{1:T}],
+  \label{eq:smc-em-sufficient-statistics}
+\end{equation}
+which are the sufficient statistics of the complete-data Gaussian model.
+Equivalently,
+\[
+  Q(\theta \mid \theta^{(k)})
+  \coloneqq
+  \E_{\theta^{(k)}}\!\left[
+    \log p_\theta(x_{0:T},y_{1:T})
+    \,\middle|\,
+    y_{1:T}
+  \right]
+\]
+depends on $\theta$ only through these expectations, so the M-step simply plugs them into the same regression and covariance formulas that would be used if the states were observed.
+In that sense, EM for linear-Gaussian state-space models is just ``regression with missing states,'' where the backward smoother supplies the conditional replacements for the unobserved regressors and cross-products.
+Once the model becomes nonlinear or non-Gaussian, the recursion from \Cref{prop:smc-filtering-recursion} still holds, but the filtered law no longer closes inside a finite-dimensional family.
+
+\subsubsection{Particle approximations and weight degeneracy}
+\label{subsubsec:smc-particles}
+
+For a general state-space model, SMC is an online version of the self-normalized importance-sampling construction from \Cref{subsubsec:importance-sampling}.
+Instead of approximating one fixed target once, it updates the approximation each time a new observation arrives.
+This progression from sequential importance sampling to a general SMC framework is developed systematically in \citet[\S2.6.3 and Ch.~3]{liu_2002_monte_carlo}.
+Concretely, it replaces the filtering distribution by a weighted empirical measure
+\begin{equation}
+  \pi_t^N(dx)
+  \coloneqq
+  \sum_{i=1}^N w_t^{(i)}\,\delta_{x_t^{(i)}}(dx)
+  \approx
+  p_\theta(x_t \mid y_{1:t})(dx),
+  \label{eq:smc-empirical-measure}
+\end{equation}
+where the particle locations $x_t^{(i)}$ summarize likely states and the weights satisfy $w_t^{(i)}\ge 0$ and $\sum_i w_t^{(i)}=1$.
+As in ordinary importance sampling, expectations under the filtering law are then approximated by weighted averages:
+\begin{equation}
+  \E_\theta[h(x_t)\mid y_{1:t}]
+  \approx
+  \sum_{i=1}^N w_t^{(i)} h(x_t^{(i)}).
+  \label{eq:smc-expectation}
+\end{equation}
+
+At this point it is worth separating the empirical approximation problem from the specific sequential mechanics.
+In SMC the particles interact through weighting and resampling, so after one update step the cloud is typically no longer i.i.d.
+That is not itself a defect.
+What matters is how well the empirical measure approximates the target law.
+Suppose our task is to estimate expectations under \(\pi\) from a particle cloud of fixed size \(N\).
+Then the right question is not ``are the particles independent?'' but ``what does dependence do to the variance of empirical averages?''
+The next proposition records the basic variance calculation behind that point.
+
+\begin{proposition}[Empirical averages for an exchangeable particle cloud]
+\label{prop:particle-cloud-unbiased-variance}
+Let \(X^{(1)},\dots,X^{(N)}\) be exchangeable random variables with common marginal law \(\pi\), and define the empirical measure
+\[
+  \hat\pi_N
+  \coloneqq
+  \frac1N\sum_{i=1}^N \delta_{X^{(i)}}.
+\]
+Then for every integrable test function \(h\),
+\begin{equation}
+  \E\!\left[\int h(x)\,\hat\pi_N(dx)\right]
+  =
+  \int h(x)\,\pi(dx).
+  \label{eq:particle-cloud-unbiased}
+\end{equation}
+If \(h\in L^2(\pi)\), then
+\begin{equation}
+  \operatorname{Var}\!\left(\int h(x)\,\hat\pi_N(dx)\right)
+  =
+  \frac{1}{N}\operatorname{Var}_{\pi}\!\bigl(h(X^{(1)})\bigr)
+  +
+  \frac{N-1}{N}\operatorname{Cov}\!\bigl(h(X^{(1)}),h(X^{(2)})\bigr).
+  \label{eq:particle-cloud-variance}
+\end{equation}
+\end{proposition}
+\begin{proof}
+Because each \(X^{(i)}\) has marginal law \(\pi\),
+\[
+  \E\!\left[\int h(x)\,\hat\pi_N(dx)\right]
+  =
+  \frac1N\sum_{i=1}^N \E[h(X^{(i)})]
+  =
+  \int h(x)\,\pi(dx),
+\]
+which proves \eqref{eq:particle-cloud-unbiased}.
+For the variance, write
+\[
+  \int h(x)\,\hat\pi_N(dx)
+  =
+  \frac1N\sum_{i=1}^N h(X^{(i)}).
+\]
+Expanding the variance of that average gives
+\[
+  \operatorname{Var}\!\left(\frac1N\sum_{i=1}^N h(X^{(i)})\right)
+  =
+  \frac{1}{N^2}\sum_{i=1}^N \operatorname{Var}(h(X^{(i)}))
+  +
+  \frac{1}{N^2}\sum_{i\neq j}\operatorname{Cov}(h(X^{(i)}),h(X^{(j)})).
+\]
+Exchangeability makes all variance terms equal and all off-diagonal covariance terms equal, which yields \eqref{eq:particle-cloud-variance}.%
+\end{proof}
+
+For i.i.d.\ particles, the covariance term in \eqref{eq:particle-cloud-variance} vanishes.
+If the dependence is negative for a class of important test functions \(h\), then the coupled cloud can approximate \(\pi\) more accurately than an i.i.d.\ cloud of the same size.
+So from the viewpoint of empirical approximation, independence is sufficient but not sacred.
+This matters already in SMC, where reweighting and resampling create interaction automatically and the real question is whether the resulting empirical measure is good.
+Later, in \Cref{subsubsec:diffusion-diverse-sampling}, we will see a diffusion-model example where one specifies a joint law on the particle cloud directly in order to improve finite-particle approximation \citep[\S3]{corso_xu_de_bortoli_barzilay_jaakkola_2023_particle_guidance}.
+
+If the weighted particles at time $t-1$ approximate $p_\theta(x_{t-1}\mid y_{1:t-1})$, the most direct sequential importance step uses the transition density itself as the proposal.
+We first propagate
+\begin{equation}
+  x_t^{*,(i)} \sim f_\theta(\cdot \mid x_{t-1}^{(i)}),
+  \qquad i=1,\dots,N,
+  \label{eq:smc-propagate}
+\end{equation}
+which approximates the predictive law \eqref{eq:smc-predict}, and then reweight with the new likelihood factor:
+\begin{equation}
+  \tilde w_t^{(i)}
+  =
+  w_{t-1}^{(i)}\,g_\theta(y_t \mid x_t^{*,(i)}),
+  \qquad
+  w_t^{(i)}
+  =
+  \frac{\tilde w_t^{(i)}}{\sum_{j=1}^N \tilde w_t^{(j)}}.
+  \label{eq:smc-weight-update}
+\end{equation}
+Equation \eqref{eq:smc-weight-update} is Bayes's rule from \eqref{eq:smc-update} written in sequential importance-sampling form, with exactly the same normalize-the-weights step as in \Cref{subsubsec:importance-sampling}.
+Liu presents the same recursive-weight viewpoint in \citet[\S2.6.3]{liu_2002_monte_carlo}.
+In implementation one usually evaluates the unnormalized weights on the log scale, as in \Cref{subsubsec:working-on-log-scale}, since likelihood values can vary by many orders of magnitude across particles.
+The operational cycle is therefore simple: start from the weighted empirical law at time $t-1$, propagate each particle through the transition model, multiply by the new likelihood factor, renormalize, and resample only when the resulting weights become too uneven.
+
+A standard diagnostic is the same effective-sample-size proxy from \Cref{subsubsec:proposal-quality-and-ess}, now applied at each time step.
+Its role is to quantify the weight degeneracy of pure sequential importance sampling.
+After many observations, most particles receive tiny weights, so the approximation is carried by only a few surviving lineages.
+\begin{equation}
+  \mathrm{ESS}_t
+  \coloneqq
+  \frac{1}{\sum_{i=1}^N (w_t^{(i)})^2}.
+  \label{eq:smc-ess}
+\end{equation}
+This is the same weight-based ESS proxy used in importance sampling, not the autocorrelation ESS from \Cref{subsubsec:ess} for a single correlated Markov chain.
+This equals $N$ when the weights are uniform and decreases toward $1$ when a single particle dominates.
+Here the interpretation is even more concrete than in one-shot importance sampling:
+a small ESS means the particle system has effectively forgotten most of its diversity and needs help before the next observation arrives.
+
+\subsubsection{Resampling and the bootstrap filter}
+\label{subsubsec:smc-resampling}
+
+Resampling combats degeneracy by replacing a highly uneven weighted sample with an equally weighted sample drawn from the current empirical measure.
+Given weighted particles $\{(x_t^{*,(i)},w_t^{(i)})\}_{i=1}^N$, draw ancestor indices
+\[
+  A_t^{(1)},\dots,A_t^{(N)} \in \{1,\dots,N\}
+\]
+with probabilities $\mathbb{P}(A_t^{(j)}=i)=w_t^{(i)}$, then set
+\[
+  x_t^{(j)} = x_t^{*,(A_t^{(j)})},
+  \qquad
+  w_t^{(j)} = \frac{1}{N}.
+\]
+The new system duplicates high-weight particles and discards low-weight ones, so future propagation starts from a healthier empirical approximation.
+If the ancestor indices are retained, then the algorithm is genuinely working on an augmented state:
+the current particle locations approximate the filtering law, while the recorded lineages provide the bookkeeping needed for later smoothing over past states.
+Equivalently, one can formulate the method on path space, with particles carrying weighted partial trajectories $x_{0:t}^{(i)}$ rather than only their current endpoints; this is the partial-sample viewpoint emphasized by \citet[\S\S3.4.3--3.4.4]{liu_2002_monte_carlo}.
+
+\begin{proposition}[Resampling preserves weighted averages in expectation]
+\label{prop:smc-resampling}
+Conditional on the weighted sample $\{(x_t^{*,(i)},w_t^{(i)})\}_{i=1}^N$, let $x_t^{(1)},\dots,x_t^{(N)}$ be resampled independently from that empirical measure.
+Then, for any integrable test function $h$,
+\begin{equation}
+  \E\!\left[
+    \frac{1}{N}\sum_{j=1}^N h(x_t^{(j)})
+    \,\bigm|\,
+    x_t^{*,(1:N)},w_t^{(1:N)}
+  \right]
+  =
+  \sum_{i=1}^N w_t^{(i)} h(x_t^{*,(i)}).
+  \label{eq:smc-resampling-unbiased}
+\end{equation}
+\end{proposition}
+\begin{proof}
+Conditional on the current weighted sample, each $x_t^{(j)}$ has distribution $\sum_i w_t^{(i)}\delta_{x_t^{*,(i)}}$.
+Therefore
+\[
+  \E[h(x_t^{(j)}) \mid x_t^{*,(1:N)},w_t^{(1:N)}]
+  =
+  \sum_{i=1}^N w_t^{(i)} h(x_t^{*,(i)}).
+\]
+Summing over $j=1,\dots,N$ and dividing by $N$ gives \eqref{eq:smc-resampling-unbiased}.%
+\end{proof}
+
+Resampling improves the distribution of future weights, but it is not free.
+Duplicating the current high-weight particles reduces weight variance now, yet it also reduces genealogical diversity and can lead to sample impoverishment if resampling is too frequent.
+That is why practical filters usually resample only when the ESS in \eqref{eq:smc-ess} falls below a threshold such as $N/2$.
+For discussion of this tradeoff and of simple-random versus residual resampling schemes, see \citet[\S\S3.4.3--3.4.4]{liu_2002_monte_carlo}.
+
+\begin{algorithm}[H]
+  \caption{Adaptive bootstrap particle filter}
+  \label{alg:bootstrap-particle-filter}
+  \begin{algorithmic}[1]
+    \Require Initial law $p_0$, transition density $f_\theta$, likelihood $g_\theta$, observations $y_{1:T}$, number of particles $N$, ESS threshold factor $c\in(0,1]$
+    \For{$i=1,2,\dots,N$}
+      \State Draw $x_0^{(i)} \sim p_0$ and set $w_0^{(i)} \gets 1/N$.
+    \EndFor
+    \For{$t=1,2,\dots,T$}
+      \For{$i=1,2,\dots,N$}
+        \State Draw $x_t^{*,(i)} \sim f_\theta(\cdot \mid x_{t-1}^{(i)})$.
+        \State $\tilde w_t^{(i)} \gets w_{t-1}^{(i)} g_\theta(y_t \mid x_t^{*,(i)})$.
+      \EndFor
+      \State $\hat z_t \gets \sum_{i=1}^N \tilde w_t^{(i)}$.
+      \For{$i=1,2,\dots,N$}
+        \State $w_t^{(i)} \gets \tilde w_t^{(i)} / \hat z_t$.
+      \EndFor
+      \State $\mathrm{ESS}_t \gets 1 / \sum_{i=1}^N (w_t^{(i)})^2$.
+      \If{$\mathrm{ESS}_t < cN$}
+        \State Sample ancestor indices $A_t^{(1)},\dots,A_t^{(N)}$ with probabilities $w_t^{(1)},\dots,w_t^{(N)}$.
+        \For{$i=1,2,\dots,N$}
+          \State $x_t^{(i)} \gets x_t^{*,(A_t^{(i)})}$ and $w_t^{(i)} \gets 1/N$.
+        \EndFor
+      \Else
+        \For{$i=1,2,\dots,N$}
+          \State $x_t^{(i)} \gets x_t^{*,(i)}$.
+        \EndFor
+      \EndIf
+    \EndFor
+    \State \Return $\{(x_t^{(i)},w_t^{(i)})\}_{i=1}^N$ for $t=0,\dots,T$ and $\hat\ell_T(\theta)=\sum_{t=1}^T \log \hat z_t$
+  \end{algorithmic}
+\end{algorithm}
+
+If the resampling step is carried out at every observation time, \Cref{alg:bootstrap-particle-filter} reduces to the classical sample-importance-resampling bootstrap filter.
+More sophisticated resampling rules such as systematic, stratified, or residual resampling reduce the extra Monte Carlo variation introduced by multinomial resampling, but they play the same probabilistic role:
+replace one highly skewed weighted cloud by another representation of essentially the same empirical law whose future weights will be less degenerate.
+
+\subsubsection{Likelihood increments and parameter learning}
+\label{subsubsec:smc-likelihood}
+
+The filtering recursion also factorizes the marginal likelihood.
+If
+\begin{equation}
+  z_t \coloneqq p_\theta(y_t \mid y_{1:t-1}),
+  \label{eq:smc-likelihood-increment}
+\end{equation}
+then
+\begin{equation}
+  p_\theta(y_{1:T})
+  =
+  \prod_{t=1}^T z_t,
+  \qquad
+  \log p_\theta(y_{1:T})
+  =
+  \sum_{t=1}^T \log z_t.
+  \label{eq:smc-likelihood-factorization}
+\end{equation}
+By \eqref{eq:smc-update}, each increment is a predictive expectation,
+\begin{equation}
+  z_t
+  =
+  \int g_\theta(y_t \mid x_t)\,p_\theta(x_t \mid y_{1:t-1})\,dx_t.
+  \label{eq:smc-likelihood-predictive}
+\end{equation}
+The particle approximation therefore gives the estimator
+\begin{equation}
+  \hat z_t
+  \coloneqq
+  \sum_{i=1}^N \tilde w_t^{(i)}
+  =
+  \sum_{i=1}^N w_{t-1}^{(i)} g_\theta(y_t \mid x_t^{*,(i)}).
+  \label{eq:smc-likelihood-estimator}
+\end{equation}
+When the particles entering time $t$ have already been reset to equal weights, this simplifies to
+\begin{equation}
+  \hat z_t
+  =
+  \frac{1}{N}\sum_{i=1}^N g_\theta(y_t \mid x_t^{*,(i)}).
+  \label{eq:smc-likelihood-estimator-equal-weights}
+\end{equation}
+Combining \eqref{eq:smc-likelihood-factorization} and \eqref{eq:smc-likelihood-estimator} yields the natural particle approximation
+\begin{equation}
+  \hat p_\theta(y_{1:T})
+  \coloneqq
+  \prod_{t=1}^T \hat z_t,
+  \qquad
+  \hat\ell_T(\theta)
+  \coloneqq
+  \sum_{t=1}^T \log \hat z_t.
+  \label{eq:smc-loglik}
+\end{equation}
+Even though the logarithm introduces bias by Jensen's inequality, the decomposition is still extremely useful because each term depends only on the current particle system and the newest observation.
+This is exactly the structure one wants for online learning.
+For this likelihood-increment factorization and its particle approximation, see \citet[\S2.6.3]{liu_2002_monte_carlo}.
+
+The connection back to the latent-variable viewpoint from \Cref{subsec:expectation-maximization} is direct.
+In a linear-Gaussian model, Kalman smoothing supplies exact conditional moments and EM updates the parameters analytically.
+In a general nonlinear or non-Gaussian model, the same latent quantities are no longer available in closed form, but SMC supplies sequential approximations to the filtered laws and to the likelihood increments \eqref{eq:smc-likelihood-increment}.
+Those approximations can be used for approximate EM, for likelihood-based tuning, or for stochastic-gradient parameter updates as new data arrive.
+These parameter-learning uses of SMC are reviewed in \citet[\S\S3.4.3--3.4.4]{liu_2002_monte_carlo}.
+The same complete-data logic from \eqref{eq:smc-em-sufficient-statistics} still applies:
+if the M-step would be easy given latent trajectories, then particle smoothing or weighted ancestral trajectories provide approximations to the missing sufficient statistics, and one maximizes the resulting approximate $Q$-function.
+For Bayesian parameter inference, one typically uses the likelihood estimate $\hat p_\theta(y_{1:T})$ rather than the log estimate \eqref{eq:smc-loglik}.
+If the particle filter is constructed so that $\hat p_\theta(y_{1:T})$ is a nonnegative unbiased estimator of the true likelihood, then it can be used inside a pseudo-marginal Metropolis--Hastings update for $\theta$.
+In that case the particle filter numerically integrates out the latent states while a separate sampler moves through parameter space.
+Without that nonnegative unbiasedness property, the same substitution should be viewed only as an approximate plug-in.
+
+Two practical cautions matter throughout.
+First, state-space models can have identifiability symmetries, so parameter learning often needs constraints, regularization, or strong prior information to distinguish dynamically equivalent parametrizations.
+Second, better approximation costs more computation:
+more particles reduce Monte Carlo error, and more aggressive resampling stabilizes the ESS, but both also increase runtime and can reduce genealogical diversity.
+In practice the first quantities to monitor are the ESS trajectory and the incremental log-likelihood estimates $\log \hat z_t$.
+If the ESS repeatedly collapses or the likelihood estimate becomes erratic, the filter usually needs a better proposal, more particles, or a better constrained model.

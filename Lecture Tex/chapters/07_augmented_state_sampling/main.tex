@@ -1,0 +1,11 @@
+\section{Augmented-state sampling}
+\label{sec:augmented-state-sampling}
+
+Augmented-state sampling also enlarges the state, but now the goal is to improve how we move through a target family rather than to change the objective being optimized.
+For fixed-target MCMC, auxiliary variables improve exploration while preserving the target law \(\pi\); for sequential methods, a weighted or interacting particle population and its ancestry represent a target that changes as new data arrive.
+Momentum, adaptive trajectory building, temperature ladders, and particle systems all follow the same idea: add state so local computations can make more global progress.
+
+\input{chapters/07_augmented_state_sampling/hamiltonian_monte_carlo}
+\input{chapters/07_augmented_state_sampling/nuts}
+\input{chapters/07_augmented_state_sampling/tempering}
+\input{chapters/07_augmented_state_sampling/sequential_monte_carlo}

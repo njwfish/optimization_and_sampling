@@ -1,0 +1,75 @@
+\begin{tikzpicture}[>=Stealth,font=\small]
+  \tikzset{
+    panel/.style={
+      rounded corners=6pt,
+      draw=stat221Gray!35,
+      fill=stat221GrayLight,
+      line width=0.8pt,
+    },
+    paneltitle/.style={
+      font=\small\bfseries,
+      text=stat221Gray,
+      align=center,
+      text width=6.2cm,
+    },
+    state/.style={
+      draw=stat221Gray!65!black,
+      fill=white,
+      rounded corners=3pt,
+      line width=0.8pt,
+      minimum width=1.55cm,
+      minimum height=0.92cm,
+      inner sep=1pt,
+    },
+    current/.style={
+      state,
+      draw=stat221Blue!75!black,
+      fill=stat221BlueLight,
+      line width=0.9pt,
+    },
+    neighbor/.style={
+      state,
+      draw=stat221Green!70!black,
+      fill=stat221GreenLight,
+      line width=0.9pt,
+    },
+    distant/.style={
+      state,
+      draw=stat221Gray!50!black,
+      dashed,
+    },
+    allowed/.style={
+      ->,
+      stat221Green!70!black,
+      line width=1.35pt,
+      line cap=round,
+    },
+    blocked/.style={
+      ->,
+      stat221Gray!60,
+      dashed,
+      line width=0.95pt,
+      line cap=round,
+    },
+  }
+
+  \path[use as bounding box] (-0.15,-0.10) rectangle (10.90,5.20);
+
+  \draw[panel] (0.0,0.0) rectangle ++(10.60,4.90);
+  \node[paneltitle] at (5.30,4.32) {Two repairs are second-order};
+
+  \node[current]  (ba) at (5.25,2.45) {\texttt{BA}};
+  \node[neighbor] (aa) at (2.55,1.10) {\texttt{AA}};
+  \node[neighbor] (bb) at (7.95,1.10) {\texttt{BB}};
+  \node[distant]  (ab) at (9.00,3.55) {\texttt{AB}};
+
+  \draw[->,stat221Blue!75!black,line width=1.25pt,line cap=round]
+    (ba) -- ++(0,1.05)
+    node[above,font=\small,text=stat221Blue!75!black] {$1-h\lambda_t$};
+  \draw[allowed] (ba) -- node[left,font=\small,text=stat221Green!55!black] {$O(h)$} (aa);
+  \draw[allowed] (ba) -- node[right,font=\small,text=stat221Green!55!black] {$O(h)$} (bb);
+  \draw[blocked] (ba) -- (ab);
+  \draw[blocked] (aa) -- (ab);
+  \draw[blocked] (bb) -- (ab);
+  \node[font=\small,text=stat221Gray!75] at (7.20,2.35) {$O(h^2)$};
+\end{tikzpicture}

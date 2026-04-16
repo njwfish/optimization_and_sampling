@@ -1,0 +1,163 @@
+Convex optimization is tractable because local derivative information controls global behavior.
+The definitions and inequalities below formalize the properties we will use repeatedly; see \citet[Ch.~9]{boyd_vandenberghe_2004_convex}.
+
+\begin{definition}[Convex function (first-order condition)]
+Let $S \subseteq \R^d$ be convex, and let $f:S\to\R$ be differentiable.
+We say $f$ is \emph{convex} if for all $x,y \in S$,
+\begin{equation}
+  f(y) \ge f(x) + \nabla f(x)^\top (y-x).
+  \label{eq:convex-first-order}
+\end{equation}
+\end{definition}
+
+Geometrically, \eqref{eq:convex-first-order} says the graph of $f$ lies above every tangent hyperplane.
+Convexity does not require differentiability (one can state analogous conditions using subgradients), but in these notes we mostly assume differentiability to keep the calculus clean.
+
+\begin{figure}[t]
+  \centering
+  \input{figures/main_notes/optimization/fig_convexity_tangent}
+  \caption{Convexity first-order condition: a convex function lies above every tangent line/hyperplane.
+  In one dimension, \eqref{eq:convex-first-order} reads $f(y)\ge f(x) + f'(x)(y-x)$.}
+  \label{fig:convexity-tangent}
+\end{figure}
+
+\begin{definition}[$m$-strong convexity (via the Hessian)]
+Let $f:S\to\R$ be twice differentiable.
+We say $f$ is \emph{$m$-strongly convex} on $S$ if there exists $m>0$ such that
+\begin{equation}
+  \Hess f(x) \succeq m I
+  \qquad \text{for all } x \in S.
+  \label{eq:strong-convex-hess}
+\end{equation}
+\end{definition}
+
+Here (and throughout), for symmetric matrices $A,B$ we write $A \succeq B$ (equivalently $B \preceq A$) to mean $A-B$ is positive semidefinite, i.e.\ $x^\top(A-B)x\ge 0$ for all $x\in\R^d$.
+
+\begin{definition}[$M$-smoothness (Lipschitz gradient and Hessian bounds)]
+Let $f:S\to\R$ be differentiable.
+We say $f$ has \emph{$M$-Lipschitz gradient} (is \emph{$M$-smooth}) if
+\begin{equation}
+  \norm{\nabla f(x)-\nabla f(y)}_2 \le M \norm{x-y}_2
+  \qquad \text{for all } x,y \in S.
+  \label{eq:lipschitz-gradient}
+\end{equation}
+If $f$ is twice differentiable, then \eqref{eq:lipschitz-gradient} is equivalent to the operator-norm bound
+\begin{equation}
+  \norm{\Hess f(x)}_{\mathrm{op}} \le M
+  \qquad \text{for all } x \in S.
+  \label{eq:smooth-hess}
+\end{equation}
+For convex twice differentiable functions this is the same as $0 \preceq \Hess f(x) \preceq M I$.
+More generally, the one-sided upper bound $\Hess f(x) \preceq M I$ is weaker than \eqref{eq:lipschitz-gradient}, but it is still enough for the descent lemma below.
+\end{definition}
+
+\begin{theorem}[Quadratic bounds from Hessian bounds]
+\label{thm:quadratic-bounds}
+Let $f:S\to\R$ be twice differentiable on a convex set $S$.
+\begin{itemize}[leftmargin=*]
+  \item If $\Hess f(z) \preceq MI$ for all $z\in S$, then for all $x,y\in S$,
+  \[
+    f(y) \le f(x) + \nabla f(x)^\top (y-x) + \frac{M}{2}\norm{y-x}_2^2.
+  \]
+  \item If $\Hess f(z) \succeq mI$ for all $z\in S$ (i.e., $f$ is $m$-strongly convex on $S$), then for all $x,y\in S$,
+  \[
+    f(y) \ge f(x) + \nabla f(x)^\top (y-x) + \frac{m}{2}\norm{y-x}_2^2.
+  \]
+\end{itemize}
+In particular, if both bounds hold, then for all $x,y\in S$,
+\begin{equation}
+  f(x) + \nabla f(x)^\top (y-x) + \frac{m}{2}\norm{y-x}_2^2
+  \le f(y)
+  \le f(x) + \nabla f(x)^\top (y-x) + \frac{M}{2}\norm{y-x}_2^2.
+  \label{eq:quad-bounds}
+\end{equation}
+\end{theorem}
+\begin{proof}
+Fix $x,y\in S$ and define $\phi(t)=f(x+t(y-x))$ for $t\in[0,1]$.
+By the chain rule,
+\[
+\phi'(t)=\nabla f(x+t(y-x))^\top (y-x),
+\qquad
+\phi''(t)=(y-x)^\top \Hess f(x+t(y-x)) (y-x).
+\]
+If $\Hess f \preceq MI$ on $S$, then $\phi''(t) \le M\norm{y-x}_2^2$; if $\Hess f \succeq mI$ on $S$, then $\phi''(t) \ge m\norm{y-x}_2^2$.
+Applying Taylor's theorem to $\phi(1)$ around $t=0$ with Lagrange remainder gives
+\[
+\phi(1)=\phi(0)+\phi'(0)+\tfrac12 \phi''(\xi)
+\]
+for some $\xi\in(0,1)$.
+Plugging in the appropriate bound on $\phi''(\xi)$ yields the corresponding inequality; when both Hessian bounds hold we obtain \eqref{eq:quad-bounds}.
+\end{proof}
+
+The upper bound in \cref{thm:quadratic-bounds} is often called the \emph{descent lemma} (it is a quantitative version of ``$f$ is well-approximated by its tangent for small steps'').
+The lower bound is the analytic content of strong convexity.
+Together they are the basic calculus inequalities that let us prove convergence rates and justify step-size rules.
+
+Geometrically, the inequalities in \eqref{eq:quad-bounds} say that, on $S$, the function $f$ is sandwiched between two quadratic bowls around any point $x$.
+The lower bound (parameter $m$) prevents $f$ from being ``too flat'' and is what enables linear rates for first-order methods.
+The upper bound (parameter $M$) prevents $f$ from having ``too much curvature'' and is what makes fixed (or backtracked) step sizes stable.
+
+\begin{figure}[t]
+  \centering
+  \input{figures/main_notes/optimization/fig_quadratic_sandwich}
+  \caption{If $mI \preceq \Hess f \preceq MI$ on a region containing $x^\star$, then $f$ is ``sandwiched'' between two quadratics around the minimizer:
+  $f(x^\star)+\tfrac{m}{2}\norm{x-x^\star}^2 \le f(x)\le f(x^\star)+\tfrac{M}{2}\norm{x-x^\star}^2$.}
+  \label{fig:quadratic-sandwich}
+\end{figure}
+
+\begin{corollary}[Uniqueness of the minimizer]
+If $f$ is $m$-strongly convex on $S$, then $f$ has at most one minimizer on $S$.
+\end{corollary}
+\begin{proof}
+Suppose $x^\star,y^\star\in S$ are two distinct minimizers, and define
+\[
+\phi(t)=f\bigl((1-t)x^\star + ty^\star\bigr), \qquad t\in[0,1].
+\]
+Then
+\[
+\phi''(t)=(y^\star-x^\star)^\top \Hess f\bigl((1-t)x^\star + ty^\star\bigr)(y^\star-x^\star)
+\ge m\norm{y^\star-x^\star}_2^2 > 0,
+\]
+so $\phi$ is strictly convex on $[0,1]$.
+Therefore
+\[
+f\Bigl(\frac{x^\star+y^\star}{2}\Bigr)=\phi\Bigl(\frac12\Bigr)
+< \frac{\phi(0)+\phi(1)}{2}
+= f(x^\star),
+\]
+which contradicts the minimality of $x^\star$ and $y^\star$.
+\end{proof}
+
+\begin{corollary}[Strong convexity links gradients, suboptimality, and distance]
+\label{cor:sc-links}
+Assume $f:\R^d\to\R$ is differentiable and $m$-strongly convex, and let $x^\star = \argmin_{x\in\R^d} f(x)$.
+Then:
+\begin{enumerate}[leftmargin=*,label=(\alph*)]
+  \item $\nabla f(x^\star)=0$,
+  \item for all $x \in \R^d$, $f(x) - f(x^\star) \le \frac{1}{2m}\norm{\nabla f(x)}_2^2$,
+  \item for all $x \in \R^d$, $\norm{x-x^\star}_2 \le \frac{1}{m}\norm{\nabla f(x)}_2$.
+\end{enumerate}
+\end{corollary}
+\begin{proof}
+(a) is the first-order optimality condition for unconstrained differentiable convex minimization.
+
+(b) Apply the left inequality in \cref{thm:quadratic-bounds} and minimize the resulting quadratic lower bound over $y\in\R^d$:
+for any fixed $x$,
+\[
+f(y) \ge f(x) + \nabla f(x)^\top (y-x) + \frac{m}{2}\norm{y-x}_2^2.
+\]
+The right-hand side, viewed as a function of $y$, is minimized at $\hat y = x - \frac{1}{m}\nabla f(x)$.
+Plugging in $\hat y$ gives
+\[
+f(y) \ge f(x) - \frac{1}{2m}\norm{\nabla f(x)}_2^2 \qquad \forall y,
+\]
+and choosing $y=x^\star$ yields (b).
+
+(c) Strong convexity implies (see \cref{thm:quadratic-bounds} with $x=x^\star$ and $\nabla f(x^\star)=0$)
+\[
+f(x) \ge f(x^\star) + \frac{m}{2}\norm{x-x^\star}_2^2.
+\]
+Combine this with (b) to obtain $\frac{m}{2}\norm{x-x^\star}_2^2 \le \frac{1}{2m}\norm{\nabla f(x)}_2^2$, i.e. $\norm{x-x^\star}_2 \le \frac{1}{m}\norm{\nabla f(x)}_2$.
+\end{proof}
+For unconstrained smooth strongly convex objectives, these simple inequalities are extremely useful: they let us translate between three common notions of ``being close to optimum'' (small function gap, small gradient norm, and small distance to $x^\star$).
+We will use them to turn a decrease in $f$ into a geometric (linear) convergence rate.

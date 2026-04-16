@@ -1,0 +1,341 @@
+\subsection{Hamiltonian Monte Carlo}
+\label{subsec:hmc}
+
+In \Cref{subsec:mcmc-gradient-based} we used gradients to bias proposals toward regions where the target density is large.
+That helps a chain find the high-density part of the distribution, but it does not by itself solve the harder geometric problem: once the chain reaches that region, how should it travel through it without falling back into short random-walk-style moves?
+Overdamped Langevin dynamics still pushes directly toward lower potential energy.
+That inward drift is useful for finding the right region, but once the chain is there it becomes a limitation: in high dimensions the mode is not where most of the probability mass lies, and moving straight downhill does not efficiently travel through the typical set.
+Even for a simple Gaussian target, pointwise density decreases with radius while the available volume increases, so the bulk of the probability mass concentrates in an annulus away from the mode; \Cref{fig:hmc-concentration} sketches this volume-versus-density tradeoff.
+HMC addresses this by augmenting the state with momentum and following nearly energy-preserving dynamics that turn local gradient information into long, coherent motion through that shell; see \citet[\S3]{betancourt_2017_hmc_conceptual} and \citet[\S\S2--3]{neal_2011_hmc} for complementary expositions.
+It is therefore the sampling analogue of the augmented-state viewpoint from \Cref{subsec:momentum-based-methods}.
+The parallel with momentum methods is explicit:
+\[
+  \text{optimization:}\qquad
+  v_{k+1}\approx \beta v_k-\eta\nabla f(x_k),
+  \qquad
+  x_{k+1}=x_k+v_{k+1},
+\]
+\[
+  \text{HMC:}\qquad
+  \dot x_t=M^{-1}p_t,
+  \qquad
+  \dot p_t=-\nabla U(x_t).
+\]
+In both cases the extra variable stores motion so that local gradient information shapes a longer trajectory rather than a single local correction.
+
+\begin{figure}[H]
+  \centering
+  \input{figures/main_notes/augmented_state_sampling/fig_hmc_concentration}
+  \caption{The typical-set viewpoint.
+  Left: for an isotropic target, the mode sits at the center but the relevant mass lies in a shell away from that center.
+  Right: pointwise density decreases with radius while the available volume increases; their product concentrates in an intermediate band that carries most of the probability mass.}
+  \label{fig:hmc-concentration}
+\end{figure}
+
+The construction therefore starts from one concrete move: add momentum, use it to convert local gradients into a long deterministic trajectory, and then discretize that trajectory carefully enough that a Metropolis correction can repair the remaining numerical error.
+
+\begin{figure}[H]
+  \centering
+  \input{figures/main_notes/augmented_state_sampling/fig_hmc_typical_set}
+  \caption{Left: the gradient field points inward toward the mode, so following $-\nabla U(x)$ alone does not move efficiently through the typical set.
+  Right: after augmenting with momentum, Hamiltonian dynamics produces a nearly tangential flow that can move coherently through the typical set while still respecting the target geometry.}
+  \label{fig:hmc-typical-set}
+\end{figure}
+
+\subsubsection{Momentum augmentation and Hamiltonian dynamics}
+\label{subsubsec:hmc-augmentation}
+
+Let the target density on $\R^d$ be
+\[
+  \pi(x) \propto e^{-U(x)},
+\]
+where $U:\R^d\to\R$ is differentiable.
+The construction mirrors the momentum-based methods from \Cref{subsec:momentum-based-methods}: we keep the position variable $x$, add an auxiliary momentum variable $p$, and choose a simple Gaussian law for that momentum.
+Specifically, let $M\in\R^{d\times d}$ be positive definite and draw
+\[
+  p \sim \mathcal{N}(0,M).
+\]
+The resulting joint density is
+\begin{equation}
+  \Pi(x,p)
+  \coloneqq
+  \pi(x)\,\varphi_M(p)
+  \propto
+  \exp\!\bigl(-H(x,p)\bigr),
+  \label{eq:hmc-joint}
+\end{equation}
+where the Hamiltonian is
+\begin{equation}
+  H(x,p)
+  \coloneqq
+  U(x) + \frac{1}{2}p^\top M^{-1}p.
+  \label{eq:hmc-hamiltonian}
+\end{equation}
+The second term is the \emph{kinetic energy}; the first is the \emph{potential energy}.
+Because the momentum can be marginalized out explicitly, the $x$-marginal of $\Pi$ is exactly $\pi$, so it is enough to sample from the joint law and then discard $p$.
+The momentum variable does not change the target distribution; it gives the sampler a direction and scale of travel once the deterministic dynamics begin.
+More generally, one can think of choosing a kinetic energy \(K(p)\) and writing \(H(x,p)=U(x)+K(p)\).
+That choice is not cosmetic.
+Each momentum refresh draws a new value of \(K(p)\), which in turn selects the next total energy level \(H(x,p)\) from which the deterministic trajectory starts.
+Good performance therefore requires an \emph{energy match}: the kinetic term should inject momentum on scales that are commensurate with the variation in \(U\), so refreshed trajectories land on energy shells that explore the typical set rather than repeatedly over-energizing stiff directions and under-energizing flat ones.
+The standard quadratic choice \(K(p)=\frac12 p^\top M^{-1}p\) achieves that matching through the mass matrix \(M\), so choosing \(M\) well is both a velocity-scaling decision and an energy-matching decision.
+
+The Hamiltonian in \eqref{eq:hmc-hamiltonian} generates the ODE
+\begin{equation}
+  \dot x = \nabla_p H(x,p) = M^{-1}p,
+  \qquad
+  \dot p = -\nabla_x H(x,p) = -\nabla U(x).
+  \label{eq:hmc-hamilton-equations}
+\end{equation}
+The first equation turns momentum into a velocity, while the second says that momentum changes according to the negative gradient of the potential.
+Compared with overdamped Langevin dynamics, the gradient now acts through a second-order system: instead of determining the whole move directly, it bends an existing trajectory.
+
+Two geometric facts now explain why this deterministic motion is useful for sampling.
+First, exact trajectories preserve total energy, so they do not simply slide downhill into the mode.
+Instead, potential and kinetic energy are exchanged along the path while the total remains fixed.
+
+\begin{proposition}[Hamiltonian flow preserves the Hamiltonian]
+\label{prop:hmc-energy-conservation}
+Let $(x_t,p_t)$ solve \eqref{eq:hmc-hamilton-equations}.
+Then $H(x_t,p_t)$ is constant in $t$.
+\end{proposition}
+\begin{proof}
+Differentiate \eqref{eq:hmc-hamiltonian} along the trajectory:
+\[
+  \frac{d}{dt}H(x_t,p_t)
+  =
+  \ip{\nabla_x H(x_t,p_t)}{\dot x_t}
+  +
+  \ip{\nabla_p H(x_t,p_t)}{\dot p_t}.
+\]
+Using \eqref{eq:hmc-hamilton-equations},
+\[
+  \frac{d}{dt}H(x_t,p_t)
+  =
+  \ip{\nabla_x H}{\nabla_p H}
+  +
+  \ip{\nabla_p H}{-\nabla_x H}
+  = 0.
+\]
+Hence $H(x_t,p_t)$ is constant.%
+\end{proof}
+
+The conservation law means that exact Hamiltonian trajectories remain on a fixed energy surface.
+Informally, one can decompose the joint distribution into a distribution over energy levels $E=H(x,p)$ and a conditional distribution on each energy surface $\{(x,p):H(x,p)=E\}$.
+This conditional law is often called the \emph{microcanonical distribution}.
+From this perspective, an ideal HMC transition alternates between two mechanisms:
+momentum refreshment changes the energy level, while Hamiltonian dynamics explores the corresponding energy surface.
+Ideally the conditional distribution of total energy after momentum refreshment, given the current position \(x\), should resemble the marginal energy distribution induced by \(\Pi\).
+Otherwise the chain faithfully explores the wrong energy shells: exact dynamics still preserves those shells, but refreshment keeps selecting shells that are badly matched to the typical set.
+\Cref{fig:hmc-energy-shells} shows this geometry in phase space.
+
+\begin{figure}[H]
+  \centering
+  \input{figures/main_notes/augmented_state_sampling/fig_hmc_energy_shells}
+  \caption{Phase-space geometry for HMC.
+  Left: the canonical distribution on $(x,p)$ can be organized by Hamiltonian level sets.
+  Right: momentum refreshment moves the chain between energy levels, while Hamiltonian flow explores one selected level set without changing its energy.}
+  \label{fig:hmc-energy-shells}
+\end{figure}
+
+The second key fact is that exact Hamiltonian flow does not squeeze or stretch phase space.
+If it did, following the flow would require a Jacobian correction and would not preserve the canonical density in the simple way we want.
+
+\begin{proposition}[Hamiltonian vector fields are divergence free]
+\label{prop:hmc-volume-preservation}
+Assume $H$ is twice continuously differentiable.
+Then the vector field
+\[
+  F(x,p) \coloneqq \bigl(\nabla_p H(x,p),-\nabla_x H(x,p)\bigr)
+\]
+has zero divergence:
+\[
+  \nabla\cdot F = 0.
+\]
+Consequently, the exact Hamiltonian flow preserves Lebesgue measure on phase space.
+\end{proposition}
+\begin{proof}
+Write $x=(x_1,\dots,x_d)$ and $p=(p_1,\dots,p_d)$.
+Then
+\[
+  \nabla\cdot F
+  =
+  \sum_{i=1}^d
+  \frac{\partial^2 H}{\partial x_i\,\partial p_i}
+  -
+  \sum_{i=1}^d
+  \frac{\partial^2 H}{\partial p_i\,\partial x_i}
+  = 0
+\]
+by equality of mixed partial derivatives.
+The volume-preservation statement is Liouville's theorem for this divergence-free flow.%
+\end{proof}
+
+The two propositions capture the essential geometry.
+Because $H$ is constant along exact trajectories, the density $e^{-H(x,p)}$ is also constant along those trajectories.
+Because the flow preserves phase-space volume, there is no Jacobian correction.
+Hence exact Hamiltonian dynamics leaves the canonical density $\Pi(x,p)\propto e^{-H(x,p)}$ invariant.
+An exact HMC step therefore has a clean interpretation: refresh the momentum to choose an energy level and a direction of travel, then move deterministically along the corresponding level set.
+
+\subsubsection{Exact Hamiltonian transitions}
+\label{subsubsec:hmc-ideal-transition}
+
+If exact solutions of \eqref{eq:hmc-hamilton-equations} were available, one HMC iteration would be conceptually simple.
+Starting from the current position $x^{(t)}$, draw fresh momentum $p^{(t)}\sim \mathcal{N}(0,M)$, follow Hamiltonian dynamics for some integration time $\tau$, and keep the resulting position.
+Because the momentum refreshment step samples from the correct conditional law under \eqref{eq:hmc-joint}, and the Hamiltonian flow preserves $\Pi$, the resulting Markov chain leaves $\pi$ invariant.
+
+This description already explains why HMC suppresses random-walk behavior.
+After the momentum is refreshed, the trajectory can travel a macroscopic distance through the typical set before the next stochastic step.
+In the idealized exact-dynamics picture there is also no accept/reject cost: every simulated trajectory is already distributed correctly.
+The only reason a Metropolis correction appears in practice is that we must approximate the Hamiltonian flow numerically.
+
+\subsubsection{Leapfrog integration and Metropolis correction}
+\label{subsubsec:hmc-leapfrog}
+
+Exact Hamiltonian trajectories are rarely available in closed form, so we must discretize \eqref{eq:hmc-hamilton-equations}.
+A naive forward Euler step is unstable for long trajectories because it systematically injects or dissipates energy, causing the numerical path to drift away from the intended energy surface.
+For the separable Hamiltonian \eqref{eq:hmc-hamiltonian}, the standard discretization is the leapfrog method:
+\begin{align}
+  p_{n+\frac12} &= p_n - \frac{\epsilon}{2}\nabla U(x_n),
+  \label{eq:hmc-leapfrog-1}\\
+  x_{n+1} &= x_n + \epsilon M^{-1}p_{n+\frac12},
+  \label{eq:hmc-leapfrog-2}\\
+  p_{n+1} &= p_{n+\frac12} - \frac{\epsilon}{2}\nabla U(x_{n+1}),
+  \label{eq:hmc-leapfrog-3}
+\end{align}
+where $\epsilon>0$ is the step size.
+If we apply \eqref{eq:hmc-leapfrog-1}--\eqref{eq:hmc-leapfrog-3} for $L$ steps, we obtain a numerical proposal map
+\[
+  (x,p) \mapsto (\tilde x,\tilde p).
+\]
+The three lines have a simple interpretation:
+half a momentum update, then a full position update, then the second half of the momentum update.
+This symmetric ``kick--drift--kick'' structure is what gives leapfrog its good long-time behavior.
+
+A subtle point is that the raw leapfrog endpoint \((\tilde x,\tilde p)\) is not yet the right reversible proposal.
+To retrace the same discrete path one must run the integrator backward in time, which for this symmetric scheme is equivalent to flipping momentum at the endpoint.
+That is why HMC packages the proposal as \((\tilde x,-\tilde p)\) rather than \((\tilde x,\tilde p)\) before applying the Metropolis correction.
+If \(\Psi_{\epsilon,L}\) denotes the \(L\)-step leapfrog map and \(R(x,p)\coloneqq (x,-p)\) the momentum-flip map, then the reversibility identity is
+\[
+  \Psi_{\epsilon,L}^{-1}=R\circ \Psi_{\epsilon,L}\circ R.
+\]
+So the leapfrog endpoint itself is not the self-reversible proposal used in the Metropolis ratio; the reversible proposal is \(R\circ\Psi_{\epsilon,L}\).
+
+The leapfrog map is volume preserving and reversible after a momentum flip, so a Metropolis correction yields an exact sampler.
+Specifically, if we view $(\tilde x,-\tilde p)$ as the proposal, then the acceptance probability is
+\begin{equation}
+  \alpha\bigl((x,p),(\tilde x,-\tilde p)\bigr)
+  =
+  \min\!\left\{1,\exp\!\bigl(-H(\tilde x,\tilde p)+H(x,p)\bigr)\right\}.
+  \label{eq:hmc-accept}
+\end{equation}
+Because the kinetic energy is even in $p$, there is no difference between $H(\tilde x,\tilde p)$ and $H(\tilde x,-\tilde p)$.
+If we could integrate the ODE exactly, then the energy difference in \eqref{eq:hmc-accept} would vanish and every proposal would be accepted.
+The qualitative reason leapfrog works so well is that its numerical error remains organized around the true energy shell rather than drifting coherently away from it.
+By contrast, a naive Euler scheme will typically spiral off the intended level set.
+This is the geometric content of \Cref{fig:hmc-integration-stability}.
+
+\begin{figure}[H]
+  \centering
+  \input{figures/main_notes/augmented_state_sampling/fig_hmc_integration_stability}
+  \caption{Numerical integration for HMC.
+  Left: a naive Euler discretization drifts across energy levels and is unsuitable for long trajectories.
+  Right: leapfrog remains close to the intended level set for long times, although sufficiently severe local curvature can still produce a sharp departure that implementations detect as a divergence.}
+  \label{fig:hmc-integration-stability}
+\end{figure}
+
+\begin{algorithm}[H]
+  \caption{Hamiltonian Monte Carlo}
+  \label{alg:hmc}
+  \begin{algorithmic}[1]
+    \Require Potential $U$, gradient $\nabla U$, mass matrix $M\succ 0$, step size $\epsilon$, leapfrog steps $L$, initial state $x^{(0)}$, iterations $T$
+    \For{$t=0,1,\dots,T-1$}
+      \State Draw $p^{(0)} \sim \mathcal{N}(0,M)$.
+      \State $(x,p) \gets (x^{(t)},p^{(0)})$.
+      \For{$\ell=1,2,\dots,L$}
+        \State $p \gets p - \frac{\epsilon}{2}\nabla U(x)$.
+        \State $x \gets x + \epsilon M^{-1}p$.
+        \State $p \gets p - \frac{\epsilon}{2}\nabla U(x)$.
+      \EndFor
+      \State $\Delta H \gets H(x,p) - H\bigl(x^{(t)},p^{(0)}\bigr)$.
+      \State Draw $u \sim \mathrm{Unif}(0,1)$.
+      \If{$\log u \le -\Delta H$}
+        \State $x^{(t+1)} \gets x$
+      \Else
+        \State $x^{(t+1)} \gets x^{(t)}$
+      \EndIf
+    \EndFor
+    \State \Return $x^{(0)},x^{(1)},\dots,x^{(T)}$
+  \end{algorithmic}
+\end{algorithm}
+
+The rejection step in \Cref{alg:hmc} corrects the discretization error but does not remove the need for careful tuning.
+If the numerical trajectory is too inaccurate, then many proposals will be rejected and the chain will again behave like a local random walk.
+The gain from HMC comes from keeping the leapfrog trajectory accurate \emph{enough} that long moves are accepted with substantial probability.
+HMC is therefore best understood as a geometric method: its efficiency comes from aligning the numerical trajectory with the target geometry over many leapfrog steps.
+For the same reason, small implementation errors in $\nabla U$ can be much more damaging here than in a one-step local proposal.
+Each leapfrog path reuses the gradient repeatedly, so a missing Jacobian term or a sign error can show up as systematic energy drift long before any tuning parameter is adjusted.
+When gradients are coded by hand, it is therefore worth checking them at a few representative points against finite-difference derivatives of the same scalar potential $U$, including any transformation terms built into $U$ itself as in \Cref{subsubsec:transformed-densities}.
+The remaining tuning burden is the trajectory length.
+Choosing too few leapfrog steps brings back local random-walk behavior, while choosing too many wastes computation by retracing the same orbit.
+The next subsection addresses exactly that burden.
+The finite-difference calculation is not the final sampler.
+It is a local correctness check that helps separate tuning problems from coding errors before warm-up begins.
+
+\subsubsection{Mass-matrix adaptation and trajectory design}
+\label{subsubsec:hmc-tuning}
+
+The matrix $M$ plays the role of a preconditioner.
+If the target is approximately Gaussian with covariance $\Sigma$, then locally
+\[
+  U(x) \approx \frac{1}{2}(x-\mu)^\top \Sigma^{-1}(x-\mu),
+  \qquad
+  \ddot x \approx -M^{-1}\Sigma^{-1}(x-\mu).
+\]
+As in \Cref{subsec:geometry-control}, one wants the metric to balance scales across directions rather than forcing one numerical step size to resolve every curvature at once.
+Here that general principle has a concrete sampler consequence: if $M^{-1}$ is comparable to $\Sigma$, equivalently $M$ to the local precision $\Sigma^{-1}$, then the velocity $M^{-1}p$ is smaller in steep directions and larger in shallow ones, so a single step size $\epsilon$ is usable across more of the state space.
+\Cref{fig:hmc-mass-matrix} illustrates how an adapted metric redistributes motion toward the shallow directions instead of wasting most of the numerical effort in the steep ones.
+This is the same energy-matching principle from \Cref{subsubsec:hmc-augmentation} in a more concrete form: a well-chosen mass matrix makes a refreshed momentum draw inject a plausible amount of kinetic energy in each direction, so the chain starts each trajectory on an energy shell that actually intersects the typical set in a useful way.
+In practice one often starts with $M=I_d$ or a diagonal estimate and adapts the inverse mass matrix $M^{-1}$ during warm-up using pilot samples.
+Those estimates are noisy, so the same safeguards from \Cref{subsec:geometry-control} apply here as well: diagonal approximations, shrinkage, or ridge regularization are used to freeze a positive definite metric that captures the dominant anisotropy without overreacting to unstable covariance estimates.
+
+\begin{figure}[H]
+  \centering
+  \input{figures/main_notes/augmented_state_sampling/fig_hmc_mass_matrix}
+  \caption{Mass-matrix adaptation in an anisotropic target.
+  The target contours are elongated, so a single isotropic momentum scale is poorly matched to the geometry.
+  Choosing $M^{-1}$ closer to the target covariance, equivalently $M$ closer to the target precision, damps motion in steep directions and allows longer, more balanced travel through shallow directions.}
+  \label{fig:hmc-mass-matrix}
+\end{figure}
+
+The step size $\epsilon$ controls numerical accuracy.
+If $\epsilon$ is too large, the leapfrog error in $\Delta H$ grows, the acceptance rate falls, and the integrator may become unstable.
+If $\epsilon$ is too small, each individual leapfrog step is accurate but the algorithm wastes work on tiny moves.
+A useful practical target is an average acceptance rate somewhere around $0.6$--$0.8$, with many modern implementations defaulting near the upper end of that range; see \citet[\S4.2]{neal_2011_hmc} and \citet[\S3.2]{hoffman_gelman_2014_nuts}.
+
+The path length $\epsilon L$ controls how far each deterministic excursion travels through phase space.
+If $L$ is too small, then even accurate trajectories move only a short distance and the chain reverts toward random-walk behavior.
+If $L$ is too large, the trajectory can loop back toward where it started, spending gradient evaluations undoing earlier movement.
+Moreover, an unfortunate fixed value of $L$ can resonate with the natural frequencies of the Hamiltonian system.
+The practical warning is specific: a perfectly deterministic choice of path length can accidentally line up with a near-periodic orbit, so successive trajectories keep returning close to where they started even when the integrator itself is accurate.
+One common hedge is therefore to randomize $L$ over a modest range across iterations; \citet[\S4, p.~25]{neal_2011_hmc} recommends this precisely to avoid such near-periodicity.
+The more systematic remedy is NUTS, which chooses the path length adaptively.
+The practical lesson is that $M$, $\epsilon$, and $L$ should be tuned together: the mass matrix sets the geometry, the step size resolves that geometry numerically, and the path length determines how fully each trajectory exploits it.
+The Metropolis correction guarantees invariance of \(\pi\), but quantitative convergence is a separate theorem-level question.
+\citet[Thms.~1--2 and 9]{durmus_moulines_saksman_2019_hmc_convergence} make that distinction precise: they prove irreducibility and Harris recurrence under an \(A1\)-type global regularity/growth condition on \(U\), and geometric ergodicity under stronger directly verifiable assumptions on the potential.
+\citet[\S6]{betancourt_2017_hmc_conceptual} complements that theorem-level view by emphasizing the practical obstructions, especially heavy tails and neighborhoods of extreme curvature.
+We will not prove those results here, but it is worth keeping the distinction in view: exactness comes from reversibility and volume preservation, whereas exponential forgetting of the initial state requires additional drift control that is not automatic from the Metropolis correction alone.
+
+\subsubsection{Divergences and reparameterization}
+\label{subsubsec:hmc-divergences}
+
+The most important failure mode to recognize in practice is a \emph{divergence}.
+Very high curvature can make the leapfrog discretization numerically unstable before the intended trajectory length is completed.
+When this happens, the simulated path departs sharply from the approximate energy surface and the implementation flags the transition as divergent.
+A divergence is therefore more informative than an ordinary rejection: it is a warning that the numerical trajectory is no longer faithfully tracking the target geometry.
+
+Mild divergences can sometimes be removed by decreasing $\epsilon$.
+Persistent divergences, however, usually indicate a geometric problem rather than a mere tuning problem.
+Strong anisotropy, tight funnels, or highly correlated parameterizations can force HMC to choose between moving accurately in the narrowest direction and moving efficiently everywhere else.
+In such cases reparameterization is often more effective than continued step-size reduction.
+Neal's funnel in \Cref{fig:neals-funnel} is a canonical illustration: a non-centered parameterization can dramatically improve the geometry seen by HMC and NUTS.

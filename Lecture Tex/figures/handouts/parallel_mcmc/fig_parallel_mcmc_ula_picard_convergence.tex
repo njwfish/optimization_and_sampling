@@ -1,0 +1,74 @@
+\begin{tikzpicture}
+  \pgfplotsset{table/search path={figures/handouts/parallel_mcmc/,../../figures/handouts/parallel_mcmc/,Lecture Tex/figures/handouts/parallel_mcmc/}}
+  \begin{axis}[
+    name=traj,
+    width=0.60\linewidth,
+    height=5.8cm,
+    xmin=1, xmax=80,
+    axis lines=left,
+    xlabel={time index $t$},
+    ylabel={$x_t$},
+    tick style={stat221Gray},
+    tick label style={font=\small},
+    label style={font=\small},
+    legend columns=2,
+    legend cell align=left,
+    legend style={
+      draw=none,
+      fill=white,
+      fill opacity=0.85,
+      text opacity=1,
+      font=\scriptsize,
+      at={(0.02,0.98)},
+      anchor=north west,
+    },
+  ]
+    \addplot[black,very thick] table [x=t, y=seq] {data_parallel_mcmc_ula_picard_timeseries.dat};
+    \addlegendentry{sequential}
+
+    \addplot[stat221Gray,thick,densely dashed,opacity=0.9] table [x=t, y=k0] {data_parallel_mcmc_ula_picard_timeseries.dat};
+    \addlegendentry{$k=0$}
+
+    \addplot[stat221Purple,thick,opacity=0.9] table [x=t, y=k10] {data_parallel_mcmc_ula_picard_timeseries.dat};
+    \addlegendentry{$k=10$}
+
+    \addplot[stat221Teal,thick,opacity=0.9] table [x=t, y=k40] {data_parallel_mcmc_ula_picard_timeseries.dat};
+    \addlegendentry{$k=40$}
+  \end{axis}
+
+  \begin{axis}[
+    at={(traj.east)},
+    anchor=west,
+    xshift=0.05\linewidth,
+    width=0.35\linewidth,
+    height=5.8cm,
+    axis x line*=bottom,
+    axis y line*=right,
+    xlabel={Picard iter.\ $k$},
+    ylabel={error / residual},
+    yticklabel pos=right,
+    ytick pos=right,
+    ymode=log,
+    tick style={stat221Gray},
+    grid=major,
+    grid style={stat221Gray!15},
+    tick label style={font=\small},
+    label style={font=\small},
+    legend cell align=left,
+    legend style={
+      draw=none,
+      fill=white,
+      fill opacity=0.85,
+      text opacity=1,
+      font=\scriptsize,
+      at={(0.02,0.98)},
+      anchor=north west,
+    },
+  ]
+    \addplot[stat221Purple,thick,mark=*,mark size=1.6,mark repeat=10] table [x=k, y=rnorm] {data_parallel_mcmc_ula_picard_metrics.dat};
+    \addlegendentry{$\norm{r(x^{(k)})}_2$}
+
+    \addplot[stat221Blue,thick,densely dashed,mark=square*,mark size=1.5,mark repeat=10] table [x=k, y=err] {data_parallel_mcmc_ula_picard_metrics.dat};
+    \addlegendentry{$\norm{x^{(k)}-x^\star}_2$}
+  \end{axis}
+\end{tikzpicture}

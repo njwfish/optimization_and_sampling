@@ -1,0 +1,114 @@
+\begin{tikzpicture}[>=Stealth,font=\small]
+  \tikzset{
+    paneltag/.style={anchor=west,font=\bfseries\small,stat221Gray!85},
+    state/.style={
+      circle,
+      draw=stat221Gray!75,
+      line width=0.9pt,
+      minimum size=10.2mm,
+      inner sep=0pt,
+      font=\small,
+    },
+    known/.style={state,fill=stat221GrayLight},
+    res/.style={
+      rectangle,
+      rounded corners=2.2pt,
+      draw=stat221Purple!60!black,
+      fill=stat221Purple!10,
+      line width=0.9pt,
+      minimum width=14.5mm,
+      minimum height=9.0mm,
+      inner sep=2.0pt,
+      font=\small,
+    },
+    edge/.style={stat221Gray!65,line width=0.9pt},
+    block/.style={
+      draw=stat221Gray!35,
+      line width=0.5pt,
+      minimum width=14.0mm,
+      minimum height=11.5mm,
+      inner sep=0pt,
+      font=\small,
+    },
+    diag/.style={block,fill=stat221BlueLight},
+    subdiag/.style={block,fill=stat221Purple!10},
+  }
+
+  % ------------------------------------------------------------
+  % (a) Locality: r_t depends only on (x_{t-1}, x_t).
+  \node[paneltag] at (0,1.10) {(a)};
+
+  \foreach \i in {0,...,4} {
+    \node[state] (x\i) at ({3.30*\i},0.35) {$x_{\i}$};
+  }
+  \node[known] at (x0) {$x_0$};
+  \draw[edge] (x0) -- (x1) -- (x2) -- (x3) -- (x4);
+
+  \foreach \t in {1,...,4} {
+    \pgfmathtruncatemacro{\tm}{\t-1}
+    \node[res] (r\t) at ({3.30*(\t-0.5)},-1.05) {$r_{\t}$};
+    \draw[edge] (r\t) -- (x\tm);
+    \draw[edge] (r\t) -- (x\t);
+  }
+
+  % ------------------------------------------------------------
+  % (b) Jacobian sparsity: block lower bidiagonal.
+  \begin{scope}[yshift=-3.60cm]
+    \node[paneltag] at (0,1.05) {(b)};
+
+    % 4x4 block pattern for J = d r / d x, with rows r_1..r_4 and cols x_1..x_4.
+    % Draw the grid explicitly to avoid misaligned/double-stroked lines from per-cell borders.
+    \pgfmathsetlengthmacro{\statCellW}{14.0mm}
+    \pgfmathsetlengthmacro{\statCellH}{11.5mm}
+    \pgfmathsetlengthmacro{\statMatW}{4*\statCellW}
+    \pgfmathsetlengthmacro{\statMatH}{4*\statCellH}
+    \pgfmathsetlengthmacro{\statHalfMatW}{0.5*\statMatW}
+
+    \coordinate (Jtop) at (6.60,0.70);
+    \coordinate (Jnw) at ($(Jtop)+(-\statHalfMatW,0)$);
+    \coordinate (Jse) at ($(Jnw)+(\statMatW,-\statMatH)$);
+
+    % Fill diagonal and subdiagonal blocks.
+    \foreach \i in {1,...,4} {
+      \path[fill=stat221BlueLight]
+        ($(Jnw)+({(\i-1)*\statCellW},{-(\i-1)*\statCellH})$)
+        rectangle
+        ($(Jnw)+(\i*\statCellW,-\i*\statCellH)$);
+    }
+    \foreach \i/\j in {2/1,3/2,4/3} {
+      \path[fill=stat221Purple!10]
+        ($(Jnw)+({(\j-1)*\statCellW},{-(\i-1)*\statCellH})$)
+        rectangle
+        ($(Jnw)+(\j*\statCellW,-\i*\statCellH)$);
+    }
+
+    % Grid lines.
+    \draw[stat221Gray!55,line width=0.6pt,line cap=rect] (Jnw) rectangle (Jse);
+    \foreach \k in {1,2,3} {
+      \draw[stat221Gray!55,line width=0.6pt,line cap=rect]
+        ($(Jnw)+(\k*\statCellW,0)$) -- ($(Jnw)+(\k*\statCellW,-\statMatH)$);
+      \draw[stat221Gray!55,line width=0.6pt,line cap=rect]
+        ($(Jnw)+(0,-\k*\statCellH)$) -- ($(Jnw)+(\statMatW,-\k*\statCellH)$);
+    }
+
+    % Block labels.
+    \foreach \i in {1,...,4} {
+      \node[font=\small] at ($(Jnw)+({(\i-0.5)*\statCellW},{-(\i-0.5)*\statCellH})$) {$I$};
+    }
+    \foreach \i/\j in {2/1,3/2,4/3} {
+      \node[font=\small]
+        at ($(Jnw)+({(\j-0.5)*\statCellW},{-(\i-0.5)*\statCellH})$) {$-A_{\i}$};
+    }
+
+    % Column labels (x_1..x_4)
+    \foreach \j/\lab in {1/$x_1$,2/$x_2$,3/$x_3$,4/$x_4$} {
+      \node[font=\small,stat221Gray!85,anchor=south]
+        at ($(Jnw)+({(\j-0.5)*\statCellW},0)+(0,0.18)$) {\lab};
+    }
+    % Row labels (r_1..r_4)
+    \foreach \i/\lab in {1/$r_1$,2/$r_2$,3/$r_3$,4/$r_4$} {
+      \node[font=\small,stat221Gray!85,anchor=east]
+        at ($(Jnw)+(0,{-(\i-0.5)*\statCellH})+(-0.20,0)$) {\lab};
+    }
+  \end{scope}
+\end{tikzpicture}
